@@ -1,455 +1,1078 @@
-# Настройка микросервисной интеграции с LLM Gateway
+# LLM Gateway v4 -- Руководство по развертыванию
 
-Руководство по подключению вашего микросервиса к LLM Gateway в Docker-среде.
-
-**Дата актуализации:** 2026-04-02
+Руководство по развертыванию Claude-шлюза (LLM Gateway v4) с нуля. Целевая аудитория: DevOps/SRE.
 
 ---
 
-## 1. Docker-сеть
+## Содержание
 
-LLM Gateway использует внешнюю Docker-сеть `microservices-llm`. Все контейнеры, которым нужен доступ к шлюзу, должны быть подключены к этой сети.
+1. [Требования](#1-требования)
+2. [Архитектура контейнеров](#2-архитектура-контейнеров)
+3. [ENV переменные](#3-env-переменные)
+4. [Docker Compose setup](#4-docker-compose-setup)
+5. [PHP/nginx limits для 1M context window](#5-phpnginx-limits-для-1m-context-window)
+6. [Streaming pool sizing](#6-streaming-pool-sizing)
+7. [Миграции](#7-миграции)
+8. [Создание первого клиента](#8-создание-первого-клиента)
+9. [Healthcheck setup](#9-healthcheck-setup)
+10. [Scheduled tasks](#10-scheduled-tasks)
+11. [Logging](#11-logging)
+12. [Рекомендации по prod](#12-рекомендации-по-prod)
 
-Сеть создается автоматически при запуске LLM Gateway через `start.sh`, но можно создать вручную:
+---
+
+## 1. Требования
+
+### ОС
+
+- Linux: Ubuntu 22.04+, Debian 12+
+- Ядро 5.15+
+
+### Софт
+
+| Компонент | Минимальная версия |
+|---|---|
+| Docker Engine | 24.0 |
+| Docker Compose | v2.20 (плагин `docker compose`) |
+| Git | 2.30 |
+
+### Железо (минимум)
+
+| Ресурс | Значение |
+|---|---|
+| CPU | 4 ядра |
+| RAM | 8 GB |
+| Диск | 50 GB SSD |
+
+Для production с высокой нагрузкой на streaming (50+ одновременных потоков): 16 GB RAM, 8 CPU. См. раздел 6 для формулы расчета.
+
+### Сетевые требования
+
+- Исходящий HTTPS (443) к `api.anthropic.com`
+- Исходящий HTTPS к callback URL клиентов (webhook-доставка)
+- Входящий порт для HTTP-трафика (по умолчанию 8080, за TLS-терминатором)
+
+---
+
+## 2. Архитектура контейнеров
+
+Шлюз состоит из 7 контейнеров:
+
+```
+                    +------------------+
+                    |   Load Balancer  |
+                    | (TLS termination)|
+                    +--------+---------+
+                             |
+                             v
+                    +------------------+
+                    |      nginx       |
+                    |    (port 80)     |
+                    +--------+---------+
+                             |
+                +------------+------------+
+                |                         |
+                v                         v
+    +---------------------+   +------------------------+
+    | php-fpm-default     |   | php-fpm-streaming      |
+    | (port 9000)         |   | (port 9001)            |
+    | Обычные запросы     |   | SSE/streaming запросы  |
+    +---------------------+   +------------------------+
+                |                         |
+       +-------+-------+        +--------+--------+
+       |               |        |                 |
+       v               v        v                 v
+  +---------+    +-----------+
+  | MySQL   |    |   Redis   |
+  | 8.4     |    |   7       |
+  +---------+    +-----------+
+                       ^
+                       |
+              +--------+--------+
+              |                 |
+    +------------------+  +------------------+
+    | queue-worker (xN)|  |    scheduler     |
+    | high,default,    |  | schedule:work    |
+    | low,batch        |  |                  |
+    +------------------+  +------------------+
+```
+
+### Роли контейнеров
+
+| Контейнер | Образ | Назначение |
+|---|---|---|
+| nginx | `nginx:alpine` | Reverse proxy, маршрутизация по Accept header |
+| php-fpm-default | `php:8.4-fpm` (custom) | Обработка обычных HTTP-запросов (port 9000) |
+| php-fpm-streaming | `php:8.4-fpm` (custom) | Обработка streaming/SSE запросов (port 9001) |
+| mysql | `mysql:8.4` | Хранение данных, аудит, логи запросов |
+| redis | `redis:7-alpine` | Очереди, кеш, rate limiting |
+| queue-worker | `php:8.4-fpm` (custom) | Обработка фоновых задач через Laravel Queue |
+| scheduler | `php:8.4-fpm` (custom) | Запуск периодических задач (cron) |
+
+### Сети
+
+- `microservices-llm` -- внешняя сеть для связи с другими микросервисами
+- `llm_internal` -- внутренняя bridge-сеть для межконтейнерной связи
+
+---
+
+## 3. ENV переменные
+
+Полный список переменных окружения, сгруппированный по разделам. Файл `.env` размещается в корне проекта.
+
+### Application
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `APP_NAME` | нет | `Laravel` | Имя приложения |
+| `APP_ENV` | да | `production` | Окружение: `local`, `staging`, `production` |
+| `APP_KEY` | да | -- | Ключ шифрования (base64:...). Генерация: `php artisan key:generate` |
+| `APP_DEBUG` | да | `false` | Debug-режим. В production строго `false` |
+| `APP_URL` | да | `http://localhost` | Базовый URL приложения |
+
+### Database (MySQL)
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `DB_CONNECTION` | нет | `mysql` | Драйвер БД |
+| `DB_HOST` | да | `llm_mysql` | Хост MySQL |
+| `DB_PORT` | нет | `3306` | Порт MySQL |
+| `DB_DATABASE` | да | `llm_gateway` | Имя базы данных |
+| `DB_USERNAME` | да | `llm_user` | Пользователь MySQL |
+| `DB_PASSWORD` | да | -- | Пароль MySQL |
+| `DB_SOCKET` | нет | -- | Unix socket (альтернатива host:port) |
+| `DB_CHARSET` | нет | `utf8mb4` | Кодировка |
+| `DB_COLLATION` | нет | `utf8mb4_unicode_ci` | Сортировка |
+| `MYSQL_ROOT_PASSWORD` | да | -- | Root-пароль MySQL (для контейнера) |
+| `MYSQL_PASSWORD` | да | -- | Пароль пользователя MySQL (для контейнера) |
+| `MYSQL_ATTR_SSL_CA` | нет | -- | Путь к CA-сертификату для SSL-подключения |
+
+### Redis
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `REDIS_HOST` | да | `llm_redis` | Хост Redis |
+| `REDIS_PORT` | нет | `6379` | Порт Redis |
+| `REDIS_PASSWORD` | нет | -- | Пароль Redis |
+| `REDIS_USERNAME` | нет | -- | Пользователь Redis (ACL, Redis 6+) |
+| `REDIS_DB` | нет | `0` | Номер БД для основного подключения |
+| `REDIS_CACHE_DB` | нет | `1` | Номер БД для кеша |
+| `REDIS_CLIENT` | нет | `phpredis` | Клиент: `phpredis` или `predis` |
+| `REDIS_PREFIX` | нет | `llm_gateway-database-` | Префикс ключей |
+
+### Queue
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `QUEUE_CONNECTION` | да | `redis` | Драйвер очередей |
+
+### Cache
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `CACHE_STORE` | нет | `database` | Хранилище кеша. Для production: `redis` |
+| `CACHE_PREFIX` | нет | `llm_gateway-cache-` | Префикс ключей кеша |
+
+### Session
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `SESSION_DRIVER` | нет | `database` | Драйвер сессий. Рекомендуется `redis` |
+
+### Anthropic API
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | да | -- | API-ключ Anthropic для доступа к Claude |
+| `CLAUDE_ADMIN_API_KEY` | нет | -- | Admin API-ключ для управления организацией |
+
+### Model Overrides
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `CLAUDE_OPUS_MODEL` | нет | `claude-opus-4-6` | Идентификатор модели для алиаса `claude-opus` |
+| `CLAUDE_SONNET_MODEL` | нет | `claude-sonnet-4-6` | Идентификатор модели для алиаса `claude-sonnet` |
+| `CLAUDE_HAIKU_MODEL` | нет | `claude-haiku-4-5` | Идентификатор модели для алиаса `claude-haiku` |
+
+### Auth
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `API_KEY_PEPPER` | да | -- | Pepper для хеширования API-ключей. Генерация: `openssl rand -hex 32` |
+
+### Dev Mode
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `DEV_MODE_LATENCY_MS` | нет | `150` | Имитация задержки в dev-режиме (мс) |
+| `DEV_MODE_CONTENT` | нет | `This is a dev_mode stub response.` | Содержимое stub-ответа в dev-режиме |
+
+### Logging
+
+| Переменная | Обязательна | По умолчанию | Описание |
+|---|---|---|---|
+| `LOG_CHANNEL` | нет | `stack` | Канал логирования по умолчанию |
+| `LOG_LEVEL` | нет | `debug` | Уровень логирования |
+| `LLM_LOG_LEVEL` | нет | `error` | Уровень логирования LLM-канала |
+| `LOG_STACK` | нет | `single` | Каналы в стеке (через запятую) |
+| `LOG_SLACK_WEBHOOK_URL` | нет | -- | Webhook URL для алертов в Slack |
+
+### Итого переменных: 38
+
+Минимальный `.env` для production:
+
+```bash
+APP_NAME=LLM_Gateway
+APP_ENV=production
+APP_KEY=base64:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+APP_DEBUG=false
+APP_URL=https://llm-gateway.example.com
+
+DB_CONNECTION=mysql
+DB_HOST=llm_mysql
+DB_PORT=3306
+DB_DATABASE=llm_gateway
+DB_USERNAME=llm_user
+DB_PASSWORD=<strong-password>
+
+REDIS_HOST=llm_redis
+REDIS_PORT=6379
+REDIS_PASSWORD=<redis-password>
+
+CACHE_STORE=redis
+SESSION_DRIVER=redis
+QUEUE_CONNECTION=redis
+
+MYSQL_ROOT_PASSWORD=<root-password>
+MYSQL_PASSWORD=<strong-password>
+
+ANTHROPIC_API_KEY=sk-ant-XXXXXXXXXXXX
+API_KEY_PEPPER=<openssl rand -hex 32>
+
+LOG_CHANNEL=stack
+LOG_STACK=daily
+LLM_LOG_LEVEL=error
+```
+
+---
+
+## 4. Docker Compose setup
+
+### docker-compose.yml
+
+```yaml
+services:
+  php-fpm-default:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: llm_gateway_default
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+      - ./docker/php-fpm/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - microservices-llm
+      - llm_internal
+    depends_on:
+      - llm_mysql
+      - llm_redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  php-fpm-streaming:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: llm_gateway_streaming
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php-streaming.ini:/usr/local/etc/php/php.ini
+      - ./docker/php-fpm/pool.d/streaming.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - microservices-llm
+      - llm_internal
+    depends_on:
+      - llm_mysql
+      - llm_redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  llm_nginx:
+    image: nginx:alpine
+    container_name: llm_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - microservices-llm
+      - llm_internal
+    depends_on:
+      - php-fpm-default
+      - php-fpm-streaming
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/internal/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  llm_mysql:
+    image: mysql:8.4
+    container_name: llm_mysql
+    ports:
+      - "3307:3306"
+    volumes:
+      - llm_mysql_data:/var/lib/mysql
+    networks:
+      - llm_internal
+    environment:
+      MYSQL_DATABASE: llm_gateway
+      MYSQL_USER: llm_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    restart: unless-stopped
+
+  llm_redis:
+    image: redis:7-alpine
+    container_name: llm_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "6381:6379"
+    volumes:
+      - llm_redis_data:/data
+    networks:
+      - llm_internal
+    restart: unless-stopped
+
+  llm_queue_worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: llm_queue_worker
+    command: php artisan queue:work redis --queue=high,default,low,batch --sleep=3 --tries=1 --max-time=3600 --max-jobs=1000 --memory=256
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+    networks:
+      - microservices-llm
+      - llm_internal
+    depends_on:
+      - llm_mysql
+      - llm_redis
+      - php-fpm-default
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  llm_scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: llm_scheduler
+    command: php artisan schedule:work
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+    networks:
+      - llm_internal
+    depends_on:
+      - llm_mysql
+      - llm_redis
+      - php-fpm-default
+    env_file:
+      - .env
+    restart: unless-stopped
+
+networks:
+  microservices-llm:
+    external: true
+  llm_internal:
+    driver: bridge
+
+volumes:
+  llm_mysql_data:
+  llm_redis_data:
+```
+
+### nginx конфигурация (docker/nginx/default.conf)
+
+Маршрутизация между двумя php-fpm пулами на основе Accept header и location:
+
+```nginx
+map $http_accept $fpm_backend {
+    default                    php-fpm-default:9000;
+    ~text/event-stream         php-fpm-streaming:9001;
+}
+
+server {
+    listen 80;
+    server_name _;
+    root /var/www/html/public;
+    index index.php;
+
+    # Обычные запросы: до 64 MB
+    client_max_body_size 64M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Messages endpoint -- маршрутизация на streaming pool при SSE
+    location ~ ^/api/v1/messages$ {
+        fastcgi_pass $fpm_backend;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+        include fastcgi_params;
+
+        fastcgi_read_timeout 900s;
+        fastcgi_send_timeout 900s;
+        fastcgi_buffering off;
+        fastcgi_request_buffering off;
+
+        proxy_read_timeout 900s;
+    }
+
+    # Files upload -- увеличенный лимит тела
+    location ~ ^/api/v1/files$ {
+        fastcgi_pass php-fpm-default:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+        include fastcgi_params;
+
+        client_max_body_size 128M;
+        fastcgi_read_timeout 300s;
+    }
+
+    # Все остальные PHP-запросы
+    location ~ \.php$ {
+        fastcgi_pass php-fpm-default:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_read_timeout 300s;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
+
+### Создание внешней сети
+
+Перед первым запуском:
 
 ```bash
 docker network create microservices-llm
 ```
 
-### Подключение вашего сервиса
+### Запуск
 
-В `docker-compose.yml` вашего микросервиса:
+```bash
+docker compose up -d --build
+```
+
+---
+
+## 5. PHP/nginx limits для 1M context window
+
+Модели Claude Opus и Sonnet поддерживают context window 1 000 000 токенов. Один запрос на полный контекст может достигать десятков мегабайт и выполняться несколько минут. Ниже -- конкретные значения лимитов.
+
+### nginx
+
+| Параметр | Значение (messages) | Значение (files) | Назначение |
+|---|---|---|---|
+| `client_max_body_size` | `64M` | `128M` | Максимальный размер тела запроса |
+| `proxy_read_timeout` | `900s` | `300s` | Таймаут ожидания ответа от upstream |
+| `fastcgi_read_timeout` | `900s` | `300s` | Таймаут чтения ответа от php-fpm |
+| `fastcgi_send_timeout` | `900s` | -- | Таймаут отправки запроса в php-fpm |
+| `fastcgi_buffering` | `off` | -- | Отключено для streaming (SSE) |
+| `fastcgi_request_buffering` | `off` | -- | Отключено для streaming |
+
+### php-fpm default pool (php-default.ini)
+
+```ini
+memory_limit = 512M
+post_max_size = 64M
+upload_max_filesize = 64M
+max_execution_time = 600
+```
+
+### php-fpm default pool (www.conf)
+
+```ini
+[www]
+listen = 9000
+pm = dynamic
+pm.max_children = 50
+pm.start_servers = 10
+pm.min_spare_servers = 5
+pm.max_spare_servers = 20
+pm.max_requests = 1000
+request_terminate_timeout = 600s
+```
+
+### php-fpm streaming pool (php-streaming.ini)
+
+```ini
+memory_limit = 512M
+max_execution_time = 900
+output_buffering = Off
+zlib.output_compression = Off
+```
+
+### php-fpm streaming pool (streaming.conf)
+
+```ini
+[streaming]
+listen = 9001
+pm = dynamic
+pm.max_children = 120
+pm.start_servers = 20
+pm.min_spare_servers = 10
+pm.max_spare_servers = 30
+pm.max_requests = 500
+request_terminate_timeout = 1800s
+```
+
+### Files API
+
+Для загрузки файлов через Files API:
+
+```ini
+post_max_size = 128M
+upload_max_filesize = 128M
+```
+
+Запросы объемом более 64 MB должны использовать Files API (`POST /api/v1/files`) вместо прямой передачи контента в messages. Файл загружается отдельно, а в запросе передается `file_id`.
+
+### Сводная таблица лимитов
+
+| Пул | memory_limit | max_execution_time | request_terminate_timeout | post_max_size |
+|---|---|---|---|---|
+| default | 512M | 600s | 600s | 64M |
+| streaming | 512M | 900s | 1800s | 64M |
+| files upload | 512M | 600s | 600s | 128M |
+
+---
+
+## 6. Streaming pool sizing
+
+### Формула расчета
+
+Streaming-запросы к Claude (SSE) удерживают php-fpm worker на всю длительность генерации. Для моделей с большим контекстом это может быть 1-10 минут на запрос.
+
+```
+max_concurrent_streams = pm.max_children (streaming pool)
+required_children = peak_concurrent_streams * 1.3
+memory_per_stream ~ 80 MB
+required_ram = pool_size * 80 MB
+```
+
+### Пример расчета
+
+| Параметр | Значение |
+|---|---|
+| Пиковая нагрузка | 50 одновременных streaming-запросов |
+| Коэффициент запаса | 1.3 |
+| Требуемый `pm.max_children` | 50 * 1.3 = 65 |
+| Память на один worker | ~80 MB |
+| Требуемая RAM для streaming pool | 65 * 80 MB = 5.2 GB |
+
+Формула для `pm.max_children`:
+
+```
+pm.max_children = ceil(peak_concurrent * 1.3)
+```
+
+Формула для RAM:
+
+```
+streaming_pool_ram_gb = pm.max_children * 80 / 1024
+```
+
+### Конфигурация pm.start_servers
+
+Рекомендуемые соотношения:
+
+```
+pm.start_servers     = ceil(pm.max_children * 0.15)
+pm.min_spare_servers = ceil(pm.max_children * 0.08)
+pm.max_spare_servers = ceil(pm.max_children * 0.25)
+```
+
+### Мониторинг listen_queue
+
+Ключевая метрика для определения нехватки workers в streaming pool -- `listen queue` из php-fpm status page.
+
+#### Включение status page
+
+В `streaming.conf` добавить:
+
+```ini
+pm.status_path = /fpm-status-streaming
+```
+
+В nginx:
+
+```nginx
+location = /fpm-status-streaming {
+    allow 127.0.0.1;
+    allow 10.0.0.0/8;
+    allow 172.16.0.0/12;
+    deny all;
+    fastcgi_pass php-fpm-streaming:9001;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    include fastcgi_params;
+}
+```
+
+#### Чтение метрики
+
+```bash
+curl -s http://localhost:8080/fpm-status-streaming?json | jq '.["listen queue"]'
+```
+
+Ответ содержит:
+
+- `listen queue` -- количество запросов в очереди ожидания свободного worker
+- `active processes` -- количество занятых workers
+- `idle processes` -- количество свободных workers
+- `max children reached` -- сколько раз достигнут лимит `pm.max_children`
+
+#### Пороги алертов
+
+| Метрика | Порог | Условие | Действие |
+|---|---|---|---|
+| `listen queue` | > 5 | Устойчиво 2+ минуты | Увеличить `pm.max_children` |
+| `listen queue` | > 20 | Любой момент | Критический алерт, немедленное масштабирование |
+| `max children reached` | Растет | За последний час | Пул переполнен, нужно увеличение |
+| `idle processes` | > 50% от max_children | Устойчиво 30+ минут | Можно уменьшить пул |
+
+#### Пример Prometheus-правила
 
 ```yaml
-networks:
-  microservices-llm:
-    external: true
-
-services:
-  your_backend:
-    container_name: your_backend
-    networks:
-      - microservices-llm
-      - your_internal_network
-    # ...
+groups:
+  - name: php-fpm-streaming
+    rules:
+      - alert: StreamingPoolQueueHigh
+        expr: phpfpm_listen_queue{pool="streaming"} > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Streaming pool listen_queue > 5 sustained 2 min"
+      - alert: StreamingPoolQueueCritical
+        expr: phpfpm_listen_queue{pool="streaming"} > 20
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Streaming pool listen_queue > 20, immediate scaling required"
 ```
+
+#### Процедура масштабирования
+
+1. Проверить текущее значение `listen queue`:
+   ```bash
+   curl -s http://localhost:8080/fpm-status-streaming?json | jq '.'
+   ```
+2. Рассчитать новый `pm.max_children` по формуле выше
+3. Проверить доступную RAM: `free -g`
+4. Обновить `streaming.conf`
+5. Перезапустить streaming pool: `docker compose restart php-fpm-streaming`
+6. Убедиться, что `listen queue` вернулся к 0
+
+Подробнее о процедурах реагирования: см. `operational_runbook.md`, раздел 12.
 
 ---
 
-## 2. Контейнеры LLM Gateway
+## 7. Миграции
 
-| Контейнер | Назначение | Доступ по сети |
-|-----------|-----------|----------------|
-| `llm_nginx` | Reverse proxy (Nginx -> PHP-FPM) | `http://llm_nginx:80` |
-| `llm_gateway` | PHP-FPM (приложение) | Только через nginx |
-| `llm_queue_worker` | Обработка очередей | Подключен к `microservices-llm` (для callback) |
-| `llm_scheduler` | Планировщик задач | Только внутренняя сеть |
-| `llm_mysql` | MySQL 8.4 | Только внутренняя сеть |
-| `llm_redis` | Redis 7 | Только внутренняя сеть |
-
-**Базовый URL из Docker-сети:**
-
-```
-http://llm_nginx:80
-```
-
----
-
-## 3. API endpoints
-
-| Метод | URL | Middleware | Описание |
-|-------|-----|-----------|----------|
-| POST | `/api/v1/llm/request` | auth.api_key, rate.api_key | Отправка запроса к LLM |
-| GET | `/api/v1/llm/requests/{requestId}/raw-responses` | auth.api_key, rate.api_key | Получение raw-ответов провайдера |
-| GET | `/internal/health` | internal.network | Healthcheck |
-| GET | `/internal/stats?from=2026-01-01&to=2026-04-02` | internal.network | Статистика |
-
-**Internal endpoints** доступны только из приватных сетей (172.16.0.0/12, 10.0.0.0/8, 192.168.0.0/16, 127.0.0.1).
-
----
-
-## 4. Регистрация клиента
-
-Выполняется внутри контейнера `llm_gateway`:
+### Первичный запуск миграций
 
 ```bash
-# Создать клиента с ограничением провайдеров и rate limit
-docker exec llm_gateway php artisan llm:create-client my_service \
-  --rate-limit=120 \
-  --providers=claude,openai \
-  --no-dev-mode
-
-# Добавить callback URL в whitelist
-docker exec llm_gateway php artisan llm:add-callback-url my_service \
-  https://your_backend:8000/api/llm-response
+docker compose exec php-fpm-default php artisan migrate --force
 ```
 
-**Сохраните из вывода:**
-- `API Key` -- для заголовка `Authorization: Bearer <api_key>`
-- `Signing Secret` -- для верификации подписи callback
+Флаг `--force` обязателен для окружений `production` и `staging`.
 
-### HTTPS и callback URL
+### Создание тестовой БД
 
-- В production callback URL **обязательно** `https://`.
-- В dev/docker-окружении (APP_ENV=local) допускается `http://` -- для межконтейнерного взаимодействия без TLS.
-
-### dev_mode
-
-Новые клиенты создаются с `dev_mode=true` (если не указан `--no-dev-mode`). В dev_mode запросы не отправляются к реальным провайдерам -- возвращается stub-ответ. Для отключения:
+Для запуска тестов требуется отдельная база `llm_gateway_test`:
 
 ```bash
-docker exec llm_gateway php artisan llm:toggle-dev-mode my_service --disable
+docker compose exec php-fpm-default php artisan llm:create-test-database
 ```
+
+Команда создаст БД `llm_gateway_test` на том же MySQL-сервере.
+
+### Проверка статуса миграций
+
+```bash
+docker compose exec php-fpm-default php artisan migrate:status
+```
+
+### Legacy drop
+
+Если требуется удаление устаревших таблиц или колонок при обновлении, см. `operational_runbook.md` -- раздел миграций с breaking changes. Все деструктивные миграции требуют подтверждения.
 
 ---
 
-## 5. Обратная связь (callback)
+## 8. Создание первого клиента
 
-LLM Gateway доставляет ответы через callback. Контейнеры `llm_queue_worker` и `llm_nginx` подключены к `microservices-llm`, поэтому callback направляется на ваш сервис по его `container_name`:
+### Создание клиента
 
-```
-http://your_backend:8000/api/llm-response
-```
-
-### Требования к callback endpoint
-
-1. Принимать `Content-Type: application/json; charset=utf-8`
-2. Метод: POST (или PUT, если указан в запросе)
-3. Отвечать HTTP 200 или 202 в течение **10 секунд**
-4. Быть идемпотентным по `request_id`
-5. Верифицировать подпись (см. раздел 9)
-
-### Заголовки callback
-
-```
-Content-Type: application/json; charset=utf-8
-X-LLM-Signature: sha256=<HMAC-SHA256 hex>
-X-LLM-Timestamp: <unix timestamp>
-X-LLM-Nonce: <uuid v4>
-X-LLM-Request-Id: <request_id>
-X-LLM-Event-Type: completion | error | stream_token | stream_done | stream_error
+```bash
+docker compose exec php-fpm-default php artisan client:create "MyService" \
+    --model-alias=claude-sonnet \
+    --rate-limit=60 \
+    --monthly-cap=500.00 \
+    --features=thinking,prompt_caching,batch
 ```
 
-### Формат callback -- успех
+Параметры:
+
+| Параметр | Описание |
+|---|---|
+| `name` (аргумент, обязательный) | Имя клиента |
+| `--model-alias` | Модель по умолчанию: `claude-opus`, `claude-sonnet`, `claude-haiku` |
+| `--rate-limit` | Лимит запросов в минуту |
+| `--monthly-cap` | Месячный лимит расходов в USD |
+| `--features` | Разрешенные функции (через запятую) |
+
+Доступные features: `thinking`, `web_search`, `code_execution`, `computer_use`, `bash`, `text_editor`, `priority_tier`, `citations`, `prompt_caching`, `structured_outputs`, `batch`.
+
+Команда выведет API-ключ и signing secret. Сохраните их -- они показываются только один раз.
+
+```
+Client created: id=1 name="MyService"
+================================================================
+API KEY (save now, will not be shown again):
+  llmgw_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SIGNING SECRET (for webhook verification):
+  whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+================================================================
+```
+
+### Просмотр клиента
+
+```bash
+docker compose exec php-fpm-default php artisan client:show 1
+```
+
+Выводит таблицу с workspace, rate limit, dev mode, allowed features, monthly cap, текущие расходы за месяц, количество запросов, среднюю latency и топ используемых моделей.
+
+### Включение/отключение feature
+
+```bash
+docker compose exec php-fpm-default php artisan client:enable-feature 1 web_search
+docker compose exec php-fpm-default php artisan client:disable-feature 1 web_search
+```
+
+### Ротация API-ключа
+
+Мгновенная ротация без grace period. Старый ключ перестает работать сразу:
+
+```bash
+docker compose exec php-fpm-default php artisan client:rotate-key 1
+```
+
+### Ротация signing secret
+
+Ротация с grace period 24 часа. Предыдущий secret продолжает работать в течение grace period:
+
+```bash
+docker compose exec php-fpm-default php artisan client:rotate-secret 1
+```
+
+Автоматическая очистка просроченных предыдущих секретов выполняется по расписанию командой `webhook:cleanup-expired-secrets` (каждый час).
+
+---
+
+## 9. Healthcheck setup
+
+### Endpoints
+
+| Endpoint | Метод | Middleware | Назначение |
+|---|---|---|---|
+| `/internal/health` | GET | `internal.network` | Healthcheck (MySQL, Redis, Anthropic API) |
+| `/internal/stats` | GET | `internal.network` | Статистика очередей, расходов, pending requests |
+
+Доступ к `/internal/*` ограничен middleware `internal.network` -- только внутренние сети (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1).
+
+### Ответ /internal/health
 
 ```json
 {
   "status": "ok",
-  "meta": {"request_id": "req_001", "...": "..."},
-  "provider": {"name": "claude", "model": "claude-sonnet-4-6", "is_fallback": false},
-  "result": {
-    "content": "Ответ модели...",
-    "tool_calls": [],
-    "finish_reason": "end_turn",
-    "usage": {"input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+  "components": {
+    "mysql": {"status": "ok", "latency_ms": 2, "error": null},
+    "redis": {"status": "ok", "latency_ms": 1, "error": null}
   },
-  "structured_output_fallback": false,
-  "latency_ms": 3200
+  "anthropic_last_check_at": "2026-04-12T10:00:00+00:00",
+  "anthropic_last_status": "ok"
 }
 ```
 
-### Формат callback -- ошибка
+Статусы: `ok`, `degraded`, `down`. HTTP 200 для `ok` и `degraded`, HTTP 503 для `down`.
+
+### Ответ /internal/stats
 
 ```json
 {
-  "status": "error",
-  "meta": {"request_id": "req_001"},
-  "error": {"code": "PROVIDER_TIMEOUT", "message": "...", "details": {}},
-  "latency_ms": 30000
+  "queues": {"high": 0, "default": 5, "low": 12},
+  "async_pending_counts": {"pending": 3, "processing": 1},
+  "current_usage": {},
+  "top_spenders_month": [
+    {"id": 1, "name": "MyService", "current_month_spend_usd": "42.50"}
+  ]
 }
 ```
 
+### Kubernetes probes
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /internal/health
+    port: 80
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /internal/health
+    port: 80
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 2
+```
+
+### Docker Compose healthcheck
+
+Уже включен в конфигурацию nginx-контейнера:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost/internal/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+
+### Prometheus scraping
+
+Для интеграции с Prometheus рекомендуется настроить scrape target на `/internal/stats` с парсингом JSON. Формат ответа стабилен.
+
 ---
 
-## 6. Минимальный пример запроса
+## 10. Scheduled tasks
+
+Scheduler запускается в отдельном контейнере командой:
 
 ```bash
-curl -X POST http://llm_nginx:80/api/v1/llm/request \
-  -H "Content-Type: application/xml; charset=utf-8" \
-  -H "Authorization: Bearer <api_key>" \
-  -d '<?xml version="1.0" encoding="UTF-8"?>
-<llm_request version="3.0">
-  <meta>
-    <request_id>req_001</request_id>
-    <priority>normal</priority>
-  </meta>
-  <provider>
-    <name>claude</name>
-  </provider>
-  <prompt>
-    <block type="instruction" role="user">Ответь на вопрос кратко.</block>
-  </prompt>
-  <callback>
-    <url>http://your_backend:8000/api/llm-response</url>
-    <timeout>120</timeout>
-  </callback>
-</llm_request>'
+php artisan schedule:work
 ```
 
-Ответ -- HTTP 202:
+### Список задач
 
-```json
-{
-  "status": "accepted",
-  "request_id": "req_001",
-  "meta": {"request_id": "req_001", "priority": "normal"},
-  "provider": {"name": "claude", "model": "claude-sonnet-4-6"},
-  "callback_url": "http://your_backend:8000/api/llm-response",
-  "dev_mode": false
-}
-```
+| Задача | Расписание | Описание |
+|---|---|---|
+| `RetryFailedWebhooks` | Каждую минуту | Повторная доставка неудавшихся webhook-ов |
+| `llm:cleanup-expired` | Каждый час | Очистка expired pending prompts/responses |
+| `llm:mark-timed-out` | Каждые 5 минут | Пометка зависших запросов как timed out |
+| `ClaudeApiPingScheduled` | Каждую минуту | Проверка доступности Anthropic API |
+| `requests:cleanup` | Ежедневно в 03:00 | Очистка старых записей в request_log |
+| `webhook:cleanup-expired-secrets` | Каждый час | Удаление просроченных previous signing secrets |
+| `claude:sync-capabilities` | Еженедельно (вс, 03:00) | Синхронизация capabilities моделей с API |
+| `claude:poll-batches` | Каждую минуту | Проверка статуса batch-запросов |
+| `claude:flush-accumulator` | Каждую минуту | Отправка накопленных batch-запросов |
+| `claude:cleanup-files` | Еженедельно (вс, 03:00) | Очистка неиспользуемых файлов в Files API |
+
+Все задачи используют `withoutOverlapping()` для предотвращения дублирования. Критические задачи используют `onOneServer()` для кластеризации.
+
+Подробнее о каждой задаче: см. `internal_logic.md`, раздел 16.
 
 ---
 
-## 7. Structured Output (JSON Schema)
+## 11. Logging
 
-Для получения ответа в строго определенном JSON-формате:
+### Каналы логирования
 
-```xml
-<parameters>
-  <temperature>0.0</temperature>
-  <max_tokens>2048</max_tokens>
-  <response_format>
-    <type>json_schema</type>
-    <name>trade_recommendation</name>
-    <strict>true</strict>
-    <schema><![CDATA[
-      {
-        "type": "object",
-        "properties": {
-          "action": {"type": "string", "enum": ["LONG", "SHORT", "NO_TRADE"]},
-          "confidence": {"type": "number"},
-          "reasoning": {"type": "string"}
-        },
-        "required": ["action", "confidence", "reasoning"],
-        "additionalProperties": false
-      }
-    ]]></schema>
-  </response_format>
-</parameters>
+| Канал | Драйвер | Файл | Ротация | Уровень |
+|---|---|---|---|---|
+| `stack` (default) | stack | -- | -- | Зависит от вложенных каналов |
+| `daily` | daily | `storage/logs/laravel.log` | 14 дней | По `LOG_LEVEL` |
+| `llm` | daily | `storage/logs/llm.log` | 30 дней | По `LLM_LOG_LEVEL` (default: `error`) |
+
+### Рекомендуемая конфигурация для production
+
+```bash
+LOG_CHANNEL=stack
+LOG_STACK=daily
+LOG_LEVEL=warning
+LLM_LOG_LEVEL=error
 ```
 
-### Поведение по провайдерам
+### Docker volume для логов
 
-| Провайдер | json_schema | Примечание |
-|-----------|:-----------:|-----------|
-| OpenAI, Claude, Gemini, Mistral | нативно | Провайдер гарантирует соответствие |
-| DeepSeek | эмуляция | Schema инъецируется в system prompt. Поле `structured_output_fallback: true` в callback. Валидация -- ответственность клиента |
+Примонтировать `storage/logs` на хост для доступа без exec:
+
+```yaml
+volumes:
+  - ./logs:/var/www/html/storage/logs
+```
+
+### Примеры поиска по логам
+
+Ошибки Anthropic API за последний час:
+
+```bash
+grep "$(date -d '1 hour ago' +%Y-%m-%d)" storage/logs/llm-$(date +%Y-%m-%d).log | grep -i "error"
+```
+
+Все ошибки аутентификации:
+
+```bash
+grep "authentication" storage/logs/laravel-$(date +%Y-%m-%d).log
+```
+
+Ошибки webhook-доставки:
+
+```bash
+grep "webhook\|callback" storage/logs/llm-$(date +%Y-%m-%d).log
+```
+
+Queue worker логи (supervisor):
+
+```bash
+tail -f storage/logs/worker.log
+```
+
+### Очистка логов
+
+Автоматическая ротация: `llm` канал хранит файлы 30 дней, `daily` -- 14 дней. Дополнительная очистка не требуется.
 
 ---
 
-## 8. Healthcheck
+## 12. Рекомендации по prod
 
-Для мониторинга доступности LLM Gateway в вашем `docker-compose.yml`:
+### Queue worker scaling
+
+- Запускайте N queue workers в зависимости от нагрузки. Базовое значение: 2 workers на ядро CPU
+- Используйте supervisor для управления процессами (конфиг в `docker/supervisor/queue-worker.conf`)
+- Параметр `--max-time=3600` перезапускает worker каждый час для предотвращения утечек памяти
+- Параметр `--memory=256` останавливает worker при превышении 256 MB
+- Мониторьте размеры очередей через `/internal/stats`
+- Очередь `batch` можно обрабатывать отдельным набором workers
+
+Масштабирование workers:
 
 ```yaml
 services:
-  your_backend:
-    depends_on:
-      llm_nginx:
-        condition: service_healthy
+  llm_queue_worker:
+    deploy:
+      replicas: 4
 ```
 
-Или проверка из кода:
+### MySQL backup
 
 ```bash
-curl http://llm_nginx:80/internal/health
+docker compose exec llm_mysql mysqldump -u root -p${MYSQL_ROOT_PASSWORD} llm_gateway \
+    | gzip > /backups/llm_gateway_$(date +%Y%m%d_%H%M%S).sql.gz
 ```
 
-Ответ:
+Рекомендации:
+- Ежедневный полный дамп + binlog replication
+- Point-in-time recovery через binlog
+- Тестируйте восстановление из бекапа ежемесячно
+- Retention: 30 дней для дампов, 7 дней для binlog
 
-```json
-{
-  "status": "ok",
-  "queue_size": 0,
-  "pending_prompts": 0,
-  "pending_prompts_expired": 0,
-  "pending_responses": 0,
-  "pending_responses_failed": 0,
-  "last_request_at": "2026-04-02T10:15:30.000000Z"
+### Redis persistence
+
+Включите AOF (Append Only File) для защиты данных очередей:
+
+```yaml
+llm_redis:
+  image: redis:7-alpine
+  command: redis-server --appendonly yes --appendfsync everysec --requirepass ${REDIS_PASSWORD:-}
+  volumes:
+    - llm_redis_data:/data
+```
+
+Рекомендации:
+- `appendfsync everysec` -- баланс между производительностью и надежностью (потеря макс. 1 секунды данных)
+- Мониторьте `used_memory` через `redis-cli info memory`
+- Настройте `maxmemory-policy allkeys-lru` для production
+
+### TLS termination
+
+Шлюз не выполняет TLS-терминацию самостоятельно. Рекомендуемые варианты:
+
+1. Reverse proxy -- nginx/HAProxy/Traefik перед контейнером llm_nginx
+2. Cloud Load Balancer -- AWS ALB, GCP HTTPS LB
+3. Kubernetes Ingress -- с cert-manager для автоматического обновления сертификатов
+
+Минимальная конфигурация TLS:
+- TLS 1.2+ (рекомендуется 1.3)
+- HSTS header
+- Strong cipher suites
+
+Пример с внешним nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name llm-gateway.example.com;
+
+    ssl_certificate     /etc/ssl/certs/llm-gateway.crt;
+    ssl_certificate_key /etc/ssl/private/llm-gateway.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Streaming support
+        proxy_read_timeout 900s;
+        proxy_buffering off;
+    }
 }
 ```
 
----
+### Secrets management
 
-## 9. Верификация подписи callback
+- Никогда не коммитьте `.env` в git
+- Используйте Docker Secrets, HashiCorp Vault или AWS Secrets Manager
+- `API_KEY_PEPPER` -- критический секрет. При его утрате все API-ключи клиентов станут невалидными
+- `APP_KEY` -- ключ шифрования Laravel. При его утрате все encrypted данные (signing secrets) станут нечитаемыми
+- Ротируйте `ANTHROPIC_API_KEY` при подозрении на компрометацию
+- Signing secrets клиентов ротируются через `client:rotate-secret` с grace period 24 часа
 
-Каждый callback подписан HMAC-SHA256 с использованием `signing_secret` вашего клиента.
+### Сетевая безопасность
 
-### Алгоритм
+- Контейнеры MySQL и Redis не должны быть доступны извне. В production уберите проброс портов `3307:3306` и `6381:6379`
+- Internal endpoints (`/internal/*`) защищены middleware `internal.network`
+- Для межсервисного взаимодействия используйте внутреннюю docker-сеть `llm_internal`
 
-1. Извлечь `X-LLM-Timestamp`, `X-LLM-Nonce`, `X-LLM-Signature` из заголовков.
-2. Проверить что timestamp не старше **300 секунд**.
-3. Сформировать строку: `{timestamp}.{nonce}.{raw_body}`.
-4. Вычислить: `hash_hmac('sha256', string, signing_secret)`.
-5. Сравнить `sha256={hmac}` с `X-LLM-Signature` (timing-safe).
+### Мониторинг (чек-лист)
 
-### Пример на PHP (Laravel)
-
-```php
-public function handleCallback(Request $request): JsonResponse
-{
-    $timestamp = $request->header('X-LLM-Timestamp');
-    $nonce = $request->header('X-LLM-Nonce');
-    $signature = $request->header('X-LLM-Signature');
-
-    // Защита от replay
-    if (abs(time() - (int) $timestamp) > 300) {
-        return response()->json(['error' => 'Timestamp expired'], 401);
-    }
-
-    $payload = "{$timestamp}.{$nonce}.{$request->getContent()}";
-    $expected = 'sha256=' . hash_hmac('sha256', $payload, config('services.llm.signing_secret'));
-
-    if (! hash_equals($expected, $signature)) {
-        return response()->json(['error' => 'Invalid signature'], 401);
-    }
-
-    // Обработка ответа
-    $data = $request->json()->all();
-    $eventType = $request->header('X-LLM-Event-Type');
-    $requestId = $request->header('X-LLM-Request-Id');
-
-    if ($data['status'] === 'ok') {
-        // Успешный ответ LLM
-        $content = $data['result']['content'];
-        $toolCalls = $data['result']['tool_calls'];
-        // ...
-    } else {
-        // Ошибка
-        $errorCode = $data['error']['code'];
-        // ...
-    }
-
-    return response()->json(['ok' => true]);
-}
-```
-
-### Пример на Python
-
-```python
-import hmac
-import hashlib
-import time
-
-def verify_callback(headers: dict, body: bytes, signing_secret: str) -> bool:
-    timestamp = headers.get('X-LLM-Timestamp', '')
-    nonce = headers.get('X-LLM-Nonce', '')
-    signature = headers.get('X-LLM-Signature', '')
-
-    if abs(time.time() - int(timestamp)) > 300:
-        return False
-
-    payload = f"{timestamp}.{nonce}.{body.decode('utf-8')}"
-    expected = 'sha256=' + hmac.new(
-        signing_secret.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(expected, signature)
-```
-
----
-
-## 10. Занятые порты на хосте
-
-### LLM Gateway
-
-| Порт | Сервис |
-|------|--------|
-| 8080 | Nginx (HTTP API) |
-| 3307 | MySQL |
-| 6381 | Redis |
-
-### ai_prediction (сосед по сети)
-
-| Порт | Сервис |
-|------|--------|
-| 3000 | Frontend (Vue 3) |
-| 3306 | MySQL |
-| 6380 | Redis |
-| 8000 | Backend (Laravel) |
-| 8123 | ClickHouse HTTP |
-| 9001 | ClickHouse Native |
-
-**При добавлении новых сервисов -- избегать всех перечисленных портов.**
-
----
-
-## 11. Доступ между сервисами
-
-### Из вашего сервиса в LLM Gateway
-
-```
-http://llm_nginx:80/api/v1/llm/request
-```
-
-### Из LLM Gateway в ai_prediction
-
-```
-http://aip_backend:8000/api/...
-```
-
-### Из ai_prediction в LLM Gateway
-
-```
-http://llm_nginx:80/api/v1/llm/request
-```
-
----
-
-## 12. Управление провайдерами
-
-Полезные команды администратора:
-
-```bash
-# Статус всех провайдеров (active/paused)
-docker exec llm_gateway php artisan llm:provider-status
-
-# Возобновить приостановленный провайдер
-docker exec llm_gateway php artisan llm:resume-provider claude
-
-# Возобновить все
-docker exec llm_gateway php artisan llm:resume-provider all
-
-# Статистика запросов
-docker exec llm_gateway php artisan llm:stats --from=2026-04-01 --to=2026-04-02
-
-# Бюджет токенов Claude
-docker exec llm_gateway php artisan llm:claude-token-budget
-
-# Ротация ключей (старый работает еще 24 часа)
-docker exec llm_gateway php artisan llm:rotate-key my_service --ttl=24
-```
-
-Провайдер автоматически ставится на паузу при:
-- HTTP 429 (rate limit) -- временная пауза с авторезюмом.
-- HTTP 402 (insufficient funds) -- постоянная пауза, требуется `llm:resume-provider`.
-
-Запросы к приостановленному провайдеру не теряются -- ожидают в очереди.
-
----
-
-## 13. Запуск и остановка
-
-```bash
-# Запуск (создает сеть, поднимает контейнеры, мигрирует БД)
-cd /path/to/llm_gateway && ./start.sh
-
-# Остановка
-./stop.sh
-```
-
----
-
-## 14. Чеклист интеграции
-
-- [ ] Создан Docker-сервис подключенный к `microservices-llm`
-- [ ] Зарегистрирован клиент через `llm:create-client`
-- [ ] Callback URL добавлен в whitelist через `llm:add-callback-url`
-- [ ] Сохранены API Key и Signing Secret
-- [ ] dev_mode отключен для production-использования
-- [ ] Callback endpoint реализован: принимает JSON, отвечает 200/202 за <10с
-- [ ] Верификация подписи реализована (HMAC-SHA256)
-- [ ] Обработка error-callback реализована
-- [ ] Идемпотентность callback endpoint обеспечена
-- [ ] Порты не конфликтуют с существующими сервисами
+- `/internal/health` -- базовый healthcheck (MySQL, Redis, Anthropic)
+- `/internal/stats` -- размеры очередей, pending requests, top spenders
+- php-fpm status page -- `listen_queue` streaming pool (см. раздел 6)
+- Redis `INFO` -- used_memory, connected_clients, rejected_connections
+- MySQL slow query log
+- Размер `storage/logs/` на диске
+- Webhook delivery success rate (из request_log/response_log)

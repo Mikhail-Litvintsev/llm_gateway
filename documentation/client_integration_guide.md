@@ -1,53 +1,226 @@
-# LLM Gateway -- Полное руководство по интеграции для клиентов
+# LLM Gateway v4 -- Руководство по интеграции
 
-- **Версия протокола:** 3.0
-- **Формат запросов:** XML
-- **Формат ответов:** JSON
-- **Дата актуализации:** 2026-04-02
-
----
-
-## 1. Обзор
-
-LLM Gateway -- шлюз-посредник для работы с LLM-провайдерами. Принимает запрос в формате XML, преобразует в нативный API провайдера и доставляет результат клиенту **исключительно через асинхронный callback**.
-
-**Ключевые принципы:**
-
-- Синхронный ответ сервиса -- только подтверждение приема или ошибка валидации.
-- Результат LLM приходит на callback URL (POST/PUT с JSON).
-- API провайдеров не поддерживают серверные сессии. Клиент управляет историей диалога через блоки `history` в каждом запросе.
-- Клиент идентифицируется через API-ключ в заголовке `Authorization`.
+- **Версия протокола:** 4.0
+- **Формат:** JSON (Anthropic Messages API)
+- **Провайдер:** Claude (Anthropic)
+- **Дата актуализации:** 2026-04-12
 
 ---
 
-## 2. Регистрация клиента
+## 1. Quickstart (за 5 минут)
 
-Регистрация выполняется администратором сервиса:
+Два способа начать работу: через Anthropic SDK (рекомендуется) или напрямую через HTTP.
+
+### Вариант A: Anthropic Python SDK (рекомендуется)
 
 ```bash
-# Создание клиента
-docker exec llm_gateway php artisan llm:create-client my_service \
-  --rate-limit=120 \
-  --providers=claude,openai
-
-# Добавление callback URL в whitelist
-docker exec llm_gateway php artisan llm:add-callback-url my_service \
-  https://your-api.example.com/api/llm-response
+pip install anthropic
 ```
 
-При создании выводятся:
-- **API Key** -- для авторизации запросов (не извлекается повторно).
-- **Signing Secret** -- для верификации callback-подписи (не извлекается повторно).
+```python
+import anthropic
 
-Сохраните оба значения надежно.
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
 
-### Параметры клиента
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "Объясни теорему Байеса простым языком."}
+    ],
+)
 
-| Параметр | Значение по умолчанию | Описание |
-|----------|:---------------------:|----------|
-| `rate_limit` | 60 | Максимум запросов в минуту |
-| `allowed_providers` | все | Ограничение по провайдерам (через запятую: `claude,openai`) |
-| `dev_mode` | включен | Возвращает stub-ответы без обращения к провайдерам |
+print(message.content[0].text)
+```
+
+### Вариант B: curl
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {"role": "user", "content": "Объясни теорему Байеса простым языком."}
+    ]
+  }'
+```
+
+Ответ:
+
+```json
+{
+  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-6",
+  "content": [
+    {
+      "type": "text",
+      "text": "Теорема Байеса позволяет обновить вероятность гипотезы..."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 18,
+    "output_tokens": 245,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}
+```
+
+Заголовки ответа содержат метаданные gateway (см. раздел 4).
+
+---
+
+## 2. Использование Anthropic SDK с нашим gateway
+
+Gateway принимает запросы в формате Anthropic Messages API, поэтому официальные SDK работают напрямую -- достаточно заменить `base_url`.
+
+### Python
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+# Синхронный запрос
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=2048,
+    system="Ты полезный ассистент.",
+    messages=[
+        {"role": "user", "content": "Что такое REST API?"}
+    ],
+)
+
+# Streaming
+with client.messages.stream(
+    model="claude-sonnet",
+    max_tokens=2048,
+    messages=[{"role": "user", "content": "Напиши короткий рассказ."}],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+
+# Token counting
+result = client.messages.count_tokens(
+    model="claude-sonnet",
+    messages=[{"role": "user", "content": "Привет!"}],
+)
+print(result.input_tokens)
+
+# Batches
+batch = client.messages.batches.create(
+    requests=[
+        {
+            "custom_id": "req-1",
+            "params": {
+                "model": "claude-sonnet",
+                "max_tokens": 1024,
+                "messages": [{"role": "user", "content": "Привет!"}],
+            },
+        }
+    ]
+)
+```
+
+### TypeScript
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: "gw_live_ваш_ключ",
+  baseURL: "https://gateway.example.com/api/v1",
+});
+
+const message = await client.messages.create({
+  model: "claude-sonnet",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Что такое TypeScript?" }],
+});
+
+console.log(message.content[0].text);
+```
+
+### Работающие методы SDK
+
+| Метод SDK | Endpoint gateway |
+|-----------|-----------------|
+| `messages.create()` | `POST /api/v1/messages` |
+| `messages.stream()` | `POST /api/v1/messages` (stream: true) |
+| `messages.count_tokens()` | `POST /api/v1/messages/count_tokens` |
+| `messages.batches.create()` | `POST /api/v1/batches` |
+| `messages.batches.list()` | `GET /api/v1/batches` |
+| `messages.batches.retrieve()` | `GET /api/v1/batches/{batchId}` |
+| `messages.batches.results()` | `GET /api/v1/batches/{batchId}/results` |
+| `messages.batches.cancel()` | `POST /api/v1/batches/{batchId}/cancel` |
+| `messages.batches.delete()` | `DELETE /api/v1/batches/{batchId}` |
+| `files.upload()` | `POST /api/v1/files` |
+| `files.list()` | `GET /api/v1/files` |
+| `files.retrieve()` | `GET /api/v1/files/{fileId}` |
+| `files.delete()` | `DELETE /api/v1/files/{fileId}` |
+| `models.list()` | `GET /api/v1/models` |
+| `models.retrieve()` | `GET /api/v1/models/{alias}` |
+
+### Ключевые отличия от прямого Anthropic API
+
+**Формат ключа.** Gateway использует ключи формата `gw_live_*` вместо `sk-ant-*`. Ключ передается в заголовке `Authorization: Bearer gw_live_...` точно так же, как и обычный Anthropic-ключ.
+
+**Модели -- только алиасы.** В поле `model` принимаются исключительно алиасы: `claude-opus`, `claude-sonnet`, `claude-haiku`. Передача snapshot-имени (например, `claude-sonnet-4-6`) приведет к ошибке 400. Gateway сам разрешает алиас в актуальный snapshot.
+
+**Дополнительные заголовки ответа.** Каждый ответ содержит заголовки `X-Gateway-*` с метаданными: стоимость, request ID, информация о модели и кэше (см. раздел 4). SDK их игнорирует, но они доступны через объект raw response.
+
+**Эндпоинты, недоступные через SDK.** Следующие возможности gateway не имеют аналогов в Anthropic API и требуют прямых HTTP-запросов:
+
+- `POST /api/v1/messages/async` -- асинхронная обработка с webhook
+- `POST /api/v1/messages/batch` -- batch-аккумулятор
+- `POST /api/v1/sessions` и все `/sessions/*` -- серверные сессии
+- `POST /api/v1/skills` и все `/skills/*` -- навыки (skills)
+- `GET /api/v1/clients/me/usage` -- отчет по расходам
+- `GET /api/v1/messages/{requestId}` -- получение результата async-запроса
+
+---
+
+## 3. Аутентификация
+
+### Формат ключа
+
+API-ключи gateway имеют формат `gw_live_` + 32 символа (base62):
+
+```
+gw_live_a7Bk3mNpQrSt9uVwXyZ1c2D4e5F6g7H8
+```
+
+### Передача ключа
+
+Ключ передается в заголовке `Authorization`:
+
+```
+Authorization: Bearer gw_live_a7Bk3mNpQrSt9uVwXyZ1c2D4e5F6g7H8
+```
+
+Все эндпоинты `/api/v1/*` требуют аутентификации.
+
+### Получение ключа
+
+Ключ создается администратором:
+
+```bash
+docker exec llm_gateway php artisan llm:create-client my_service --rate-limit=120
+```
+
+При создании выводятся **API Key** и **Signing Secret** (для верификации webhook-подписей). Оба значения отображаются один раз -- сохраните их немедленно.
 
 ### Ротация ключей
 
@@ -55,941 +228,1995 @@ docker exec llm_gateway php artisan llm:add-callback-url my_service \
 docker exec llm_gateway php artisan llm:rotate-key my_service --ttl=24
 ```
 
-Старый ключ продолжает работать в течение TTL (по умолчанию 24 часа). Новый ключ выводится в консоль.
+После ротации старый ключ продолжает работать в течение grace period (по умолчанию 86400 секунд = 24 часа). Новый ключ выводится в консоль. Это позволяет обновить ключ на стороне клиента без простоя.
 
-### Управление dev_mode
+### Рекомендации по безопасности
 
-```bash
-docker exec llm_gateway php artisan llm:toggle-dev-mode my_service --disable
-```
-
-В dev_mode запросы не отправляются к реальным провайдерам. Возвращается stub-ответ:
-- provider: `stub`, model: `dev-mode-stub`
-- content: `"This is a dev_mode stub response."`
-- latency: ~150 мс (настраивается)
+- Храните ключ в переменных окружения, не в коде.
+- Не передавайте ключ в URL-параметрах.
+- Используйте разные ключи для разных окружений (staging, production).
+- Регулярно выполняйте ротацию ключей.
+- При компрометации ключа -- немедленная ротация с минимальным TTL.
 
 ---
 
-## 3. Endpoint
+## 4. Базовый запрос POST /api/v1/messages
 
-| Параметр | Значение |
-|----------|----------|
-| Метод | `POST` |
-| URL | `/api/v1/llm/request` |
-| Content-Type | `application/xml; charset=utf-8` |
-| Максимальный размер тела | 50 МБ |
+Gateway работает как **pure pass-through** к Anthropic Messages API. Тело запроса -- это **bare Anthropic Message object**, передаваемое без обертки и модификаций. Gateway транслирует его напрямую в Anthropic API, добавляя только служебные заголовки.
 
-### Заголовки запроса
-
-| Заголовок | Обязательный | Описание |
-|-----------|:------------:|----------|
-| `Content-Type` | да | `application/xml; charset=utf-8` |
-| `Authorization` | да | `Bearer <api_key>` |
-| `X-Idempotency-Key` | нет | Строка до 256 символов. Повторный запрос с тем же ключом в течение 24 часов возвращает кешированный ответ |
-| `X-Request-Id` | нет | UUID v4 для трейсинга |
-
----
-
-## 4. Структура XML-запроса
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<llm_request version="3.0">
-  <meta>...</meta>             <!-- Обязательно -->
-  <provider>...</provider>     <!-- Необязательно -->
-  <prompt>...</prompt>         <!-- Обязательно -->
-  <tools>...</tools>           <!-- Необязательно -->
-  <parameters>...</parameters> <!-- Необязательно -->
-  <callback>...</callback>     <!-- Обязательно -->
-</llm_request>
-```
-
-**Правила:**
-- Атрибут `version="3.0"` обязателен.
-- Кодировка -- строго UTF-8.
-- Обязательные секции: `<meta>`, `<prompt>`, `<callback>`.
-
----
-
-## 5. Секция `<meta>`
-
-```xml
-<meta>
-  <request_id>req_001</request_id>
-  <session_id>sess_abc</session_id>
-  <step_id>1</step_id>
-  <timestamp>2026-03-18T10:00:00Z</timestamp>
-  <source>my_bot</source>
-  <user_id>u_123</user_id>
-  <priority>normal</priority>
-  <custom_field>любое_значение</custom_field>
-</meta>
-```
-
-### Поля
-
-| Элемент | Обязательный | Тип | Описание |
-|---------|:------------:|-----|----------|
-| `request_id` | да | string | Уникальный ID запроса (до 256 символов) |
-| `session_id` | нет | string | ID сессии диалога (до 256 символов) |
-| `step_id` | условно | integer | Номер хода в сессии. **Обязателен при наличии `session_id`**. Должен быть строго больше предыдущего для данной сессии |
-| `timestamp` | нет | string | ISO 8601 (UTC). Если не указан -- текущее время |
-| `source` | нет | string | Источник запроса |
-| `user_id` | нет | string | ID конечного пользователя. Передается в LLM API для модерации |
-| `priority` | нет | enum | `low`, `normal` (по умолчанию), `high`. Влияет на приоритет в очереди |
-
-Любые другие элементы внутри `<meta>` сохраняются без изменений и возвращаются в callback-ответе.
-
----
-
-## 6. Секция `<provider>`
-
-Выбор провайдера, модели и fallback-цепочки. **Необязательна.**
-
-```xml
-<provider>
-  <name>claude</name>
-  <model>claude-sonnet-4-6</model>
-  <fallback>
-    <name>openai</name>
-    <model>gpt-4o</model>
-    <fallback>
-      <name>gemini</name>
-    </fallback>
-  </fallback>
-</provider>
-```
-
-### Доступные провайдеры
-
-| Имя | Модель по умолчанию |
-|-----|---------------------|
-| `claude` | `claude-sonnet-4-6` |
-| `openai` | `gpt-4o` |
-| `deepseek` | `deepseek-chat` |
-| `gemini` | `gemini-2.0-flash` |
-| `mistral` | `mistral-large-latest` |
-
-### Автоматический выбор (auto)
-
-Если `<provider>` отсутствует или `<name>` не указан -- сервис выбирает провайдера и модель автоматически.
-
-Варианты:
-- Только `<name>` -- сервис выбирает модель по умолчанию для провайдера.
-- Только `<model>` -- сервис определяет провайдера по имени модели (claude* -> Claude, gpt*/o1*/o3*/o4* -> OpenAI, deepseek* -> DeepSeek, gemini* -> Gemini, mistral*/codestral* -> Mistral).
-
-### Fallback
-
-При ошибке основного провайдера (5xx, таймаут, rate limit) сервис автоматически повторяет запрос к fallback. Вложенные `<fallback>` создают цепочку.
-
----
-
-## 7. Секция `<prompt>`
-
-Содержит упорядоченную последовательность блоков `<block>`. Порядок блоков -- это контракт. Сервис передает блоки в LLM строго в порядке их появления в XML.
-
-### 7.1. Атрибуты `<block>`
-
-| Атрибут | Обязательный | Тип | Описание |
-|---------|:------------:|-----|----------|
-| `type` | нет | string | Тип блока. По умолчанию `data` |
-| `role` | нет | enum | `system`, `user` (по умолчанию), `assistant`, `tool` |
-| `id` | нет | string | Уникальный ID в пределах prompt. Формат: `[a-zA-Z_][a-zA-Z0-9_-]*` |
-| `label` | нет | string | Человекочитаемая подпись блока |
-| `format` | нет | enum | `text` (по умолчанию), `csv`, `json`, `xml`, `markdown`, `base64` |
-| `media_type` | условно | string | MIME-тип. **Обязателен при `format="base64"`** |
-| `for` | нет | string | ID блока `data`, к которому относится данный `description` |
-| `tool_call_id` | условно | string | **Обязателен для `type="history_tool_result"`** |
-| `cache` | нет | boolean | `true`/`false`. Подсказка использовать prompt caching. По умолчанию `false` |
-
-### 7.2. Типы блоков и допустимые роли
-
-| Тип | Назначение | Допустимые роли |
-|-----|-----------|----------------|
-| `system` | Роль модели, поведение | `system` |
-| `instruction` | Основная задача, вопрос | `user` |
-| `description` | Пояснение к данным, контекст | `user` |
-| `data` | Структурированные данные | `user` |
-| `example` | Few-shot пример | `user`, `assistant` |
-| `constraint` | Ограничения, правила | `system`, `user` |
-| `output_format` | Требования к формату ответа | `system`, `user` |
-| `image` | Изображение (base64) | `user` |
-| `document` | PDF/документ (base64) | `user` |
-| `audio` | Аудио (base64) | `user` |
-| `url` | URL для скачивания контента | `user` |
-| `history` | Turn из истории диалога | `user`, `assistant` |
-| `history_tool_result` | Результат вызова инструмента из истории | `tool` |
-| `prefix` | Начало ответа (assistant prefill) | `assistant` |
-
-**Любая другая комбинация type + role -- ошибка `INVALID_TYPE_ROLE_COMBINATION`.**
-
-### 7.3. Правила для `format="base64"` (медиа-блоки)
-
-- **Обязательно** указать `media_type`.
-- Поддерживаемые MIME-типы:
-  - Изображения: `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/svg+xml`
-  - Документы: `application/pdf`
-  - Аудио: `audio/mp3`, `audio/wav`, `audio/ogg`, `audio/flac`, `audio/webm`
-  - Видео: `video/mp4`, `video/webm` (только Gemini)
-- Максимальный размер одного медиа-блока: 20 МБ (base64-кодированный).
-
-### 7.4. Связь description -> data
-
-**Явная привязка (рекомендуется):**
-
-```xml
-<block type="description" role="user" for="candles">Описание данных...</block>
-<block type="data" role="user" id="candles" format="csv">datetime,open,high,low,close...</block>
-```
-
-**Позиционная привязка:** Если `for` не указан, `description` привязывается к следующему за ним блоку `data`. Если следующий блок -- не `data`, это ошибка `ORPHAN_DESCRIPTION`.
-
-### 7.5. Форматирование блоков `data`
-
-При сборке промта для LLM блок `data` оборачивается:
+### Запрос
 
 ```
-<{id} label="{label}">
-{content}
-</{id}>
+POST /api/v1/messages
+Content-Type: application/json
+Authorization: Bearer gw_live_ваш_ключ
 ```
-
-Если `id` не указан, автоматически генерируется: `data_1`, `data_2` и т.д.
-
-### 7.6. Блок `prefix` (assistant prefill)
-
-Допускается максимум **один** блок `prefix`. Помещается как последнее assistant-сообщение перед генерацией. LLM продолжит ответ с этого текста. Нативно поддерживается Claude; для других провайдеров эмулируется.
-
-### 7.7. Блоки истории (multi-turn диалог)
-
-Клиент управляет историей самостоятельно. Каждый блок `history` -- один turn.
-
-**Правила:**
-- Первый `history` блок должен иметь `role="user"`.
-- Блоки должны чередоваться: `user` -> `assistant` -> `user` -> ...
-- Блоки истории должны идти подряд, перед блоками текущего запроса.
-- Ответ assistant с tool_calls передается как `history` с `format="json"`.
-- За ним обязательно следует `history_tool_result` с соответствующим `tool_call_id`.
-- Контролируйте длину истории -- рекомендуется не более 70% контекстного окна модели.
-
-**Пример истории с tool_use:**
-
-```xml
-<!-- Ход 1: вопрос пользователя -->
-<block type="history" role="user">Проанализируй EUR/USD.</block>
-
-<!-- Ход 1: ответ LLM с вызовом инструмента -->
-<block type="history" role="assistant" format="json"><![CDATA[
-  {
-    "content": "Мне нужно получить текущую цену.",
-    "tool_calls": [
-      {"id": "call_001", "name": "get_price", "arguments": {"symbol": "EURUSD"}}
-    ]
-  }
-]]></block>
-
-<!-- Результат вызова инструмента -->
-<block type="history_tool_result" role="tool" tool_call_id="call_001"><![CDATA[
-  {"price": 1.1248, "timestamp": "2026-03-18T10:00:00Z"}
-]]></block>
-
-<!-- Ход 1: финальный ответ LLM -->
-<block type="history" role="assistant">EUR/USD в зоне перекупленности...</block>
-
-<!-- Текущий ход: новый вопрос -->
-<block type="instruction" role="user">Теперь проанализируй GBP/USD.</block>
-```
-
----
-
-## 8. Секция `<tools>`
-
-Описание инструментов для function calling.
-
-```xml
-<tools tool_choice="auto">
-  <tool>
-    <name>get_price</name>
-    <description>Получить текущую цену инструмента</description>
-    <params>
-      <param name="symbol" type="string" required="true">
-        <description>Тикер, например EURUSD</description>
-      </param>
-      <param name="timeframe" type="string" required="false" enum='["M1","H1","D1"]'>
-        <description>Таймфрейм</description>
-      </param>
-    </params>
-  </tool>
-</tools>
-```
-
-### Атрибут `tool_choice`
-
-| Значение | Описание |
-|----------|----------|
-| `auto` | LLM решает сам (по умолчанию) |
-| `none` | Запретить вызов инструментов |
-| `required` | Обязать вызвать хотя бы один |
-
-### Атрибуты `<param>`
-
-| Атрибут | Обязательный | Описание |
-|---------|:------------:|----------|
-| `name` | да | Имя параметра |
-| `type` | нет | `string`, `number`, `integer`, `boolean`, `array`, `object` |
-| `required` | нет | `true`/`false`. По умолчанию `false` |
-| `enum` | нет | JSON-массив допустимых значений |
-| `default` | нет | Значение по умолчанию |
-
-Для сложных типов поддерживаются вложенные `<params>`, `<items>`, `<properties>`.
-
----
-
-## 9. Секция `<parameters>`
-
-```xml
-<parameters>
-  <temperature>0.0</temperature>
-  <max_tokens>2048</max_tokens>
-  <top_p>0.9</top_p>
-  <top_k>40</top_k>
-  <stop_sequences>["\n\n---"]</stop_sequences>
-  <stream>false</stream>
-  <response_format>
-    <type>json_schema</type>
-    <name>trade_recommendation</name>
-    <strict>true</strict>
-    <schema><![CDATA[
-      {
-        "type": "object",
-        "properties": {
-          "action": {"type": "string", "enum": ["LONG", "SHORT"]},
-          "confidence": {"type": "number"}
-        },
-        "required": ["action", "confidence"],
-        "additionalProperties": false
-      }
-    ]]></schema>
-  </response_format>
-  <reasoning>
-    <enabled>true</enabled>
-    <effort>medium</effort>
-    <max_tokens>4096</max_tokens>
-  </reasoning>
-  <extra>
-    <param name="presence_penalty">0.6</param>
-    <param name="seed">42</param>
-  </extra>
-</parameters>
-```
-
-### Стандартные параметры
-
-| Параметр | Тип | Диапазон | По умолчанию | Описание |
-|----------|-----|----------|:------------:|----------|
-| `temperature` | float | 0.0 -- 2.0 | дефолт провайдера | Уровень случайности |
-| `max_tokens` | integer | > 0 | дефолт провайдера (Claude: 4096) | Максимум токенов в ответе |
-| `top_p` | float | 0.0 -- 1.0 | дефолт провайдера | Nucleus sampling |
-| `top_k` | integer | > 0 | -- | Top-k sampling. Игнорируется при отсутствии поддержки |
-| `stop_sequences` | json array | максимум 4 элемента | -- | Строки-стопы |
-| `stream` | boolean | -- | `false` | Включить стриминг |
-
-### Structured Output (response_format)
-
-| Тип | Описание |
-|-----|----------|
-| `text` | Свободный формат (по умолчанию) |
-| `json_object` | Провайдер гарантирует валидный JSON |
-| `json_schema` | Провайдер гарантирует JSON по указанной схеме |
-
-Для `json_schema` обязательны:
-- `<name>` -- идентификатор (pattern: `^[a-zA-Z_][a-zA-Z0-9_-]*$`, максимум 64 символа)
-- `<schema>` -- JSON Schema с обязательным полем `type`
-- `<strict>` -- `true`/`false` (необязательно)
-
-#### Поддержка structured output по провайдерам
-
-| Провайдер | json_object | json_schema | Стратегия |
-|-----------|:-----------:|:-----------:|-----------|
-| OpenAI | нативно | нативно | Нативная передача |
-| Claude | нативно | нативно | Нативная передача |
-| Gemini | нативно | нативно | Нативная передача |
-| Mistral | нативно | нативно | Нативная передача |
-| DeepSeek | нативно | **эмуляция** | json_object + schema в system prompt |
-
-При эмуляции в callback-ответе `structured_output_fallback = true`. **Клиент должен самостоятельно валидировать ответ на соответствие схеме.**
-
-#### Совместимость JSON Schema между провайдерами
-
-Сервис передает JSON Schema провайдеру **как есть**. Если schema содержит неподдерживаемые ключевые слова, провайдер отклонит запрос.
-
-**Минимальный безопасный набор (все провайдеры):** `type`, `properties`, `required`, `items`, `enum`, `description`, `anyOf`.
-
-**Ключевые ограничения:**
-- **Claude** не поддерживает: `minimum`/`maximum`, `minItems`/`maxItems`, `minLength`/`maxLength`, `pattern`, `format`, `default`, `const`.
-- **Gemini** не поддерживает: `additionalProperties`, `const`.
-
-Для целочисленных диапазонов вместо `minimum`/`maximum` используйте `enum` (до ~50 значений). Для непрерывных чисел -- описывайте ограничения в `description` поля и выполняйте post-validation.
-
-### Расширенное мышление (reasoning)
-
-```xml
-<reasoning>
-  <enabled>true</enabled>
-  <effort>medium</effort>       <!-- low, medium, high -->
-  <max_tokens>4096</max_tokens>
-</reasoning>
-```
-
-- Claude: маппится в extended thinking. При включении temperature автоматически устанавливается в 1.0.
-- OpenAI: маппится в reasoning_effort для моделей o-серии.
-- Если провайдер/модель не поддерживает -- параметр игнорируется.
-
-### Дополнительные параметры (`<extra>`)
-
-Передаются провайдеру без обработки. Примеры:
-
-| Параметр | Провайдеры | Описание |
-|----------|-----------|----------|
-| `presence_penalty` | OpenAI, DeepSeek | Штраф за повторение тем (-2.0 .. 2.0) |
-| `frequency_penalty` | OpenAI, DeepSeek | Штраф за частоту повторения (-2.0 .. 2.0) |
-| `logprobs` | OpenAI | Возвращать log-вероятности (true/false) |
-| `seed` | OpenAI | Seed для детерминистичности |
-| `service_tier` | OpenAI | `auto`, `default`, `flex` |
-
-Неизвестные провайдеру параметры будут проигнорированы провайдером.
-
-### Стриминг
-
-При `<stream>true</stream>` сервис транслирует токены по мере получения через callback URL. Формат -- Server-Sent Events (SSE):
-
-```
-event: token
-data: {"request_id":"req_001","content":"Привет","index":0}
-
-event: token
-data: {"request_id":"req_001","content":" мир","index":1}
-
-event: done
-data: {"request_id":"req_001","finish_reason":"end_turn","usage":{"input_tokens":100,"output_tokens":50}}
-```
-
----
-
-## 10. Секция `<callback>` (обязательна)
-
-```xml
-<callback>
-  <url>https://your-api.example.com/api/llm-response</url>
-  <method>POST</method>
-  <headers>
-    <header name="X-Custom-Header">value</header>
-  </headers>
-  <timeout>120</timeout>
-  <retry>
-    <max_attempts>3</max_attempts>
-    <backoff>exponential</backoff>
-    <initial_delay>1</initial_delay>
-  </retry>
-</callback>
-```
-
-### Элементы
-
-| Элемент | Обязательный | По умолчанию | Описание |
-|---------|:------------:|:------------:|----------|
-| `<url>` | да | -- | HTTPS URL. Должен быть в whitelist клиента |
-| `<method>` | нет | `POST` | `POST` или `PUT` |
-| `<headers>` | нет | -- | Дополнительные заголовки для callback |
-| `<timeout>` | нет | `300` | Максимальное время ожидания ответа от LLM (секунды) |
-| `<retry>` | нет | см. ниже | Настройки повторных попыток доставки |
-
-### Настройки retry
-
-| Элемент | По умолчанию | Описание |
-|---------|:------------:|----------|
-| `<max_attempts>` | `3` | 1 -- 5 (включая первую попытку) |
-| `<backoff>` | `exponential` | `exponential` или `fixed` |
-| `<initial_delay>` | `1` | Начальная задержка в секундах |
-
-При exponential backoff: 1с, 2с, 4с, 8с...
-
-### Требования к callback endpoint клиента
-
-1. **Протокол:** HTTPS (TLS 1.2+). В dev/docker-окружении допускается HTTP.
-2. **Принимать** `Content-Type: application/json; charset=utf-8`.
-3. **Верифицировать подпись** (см. раздел 14).
-4. **Отвечать HTTP 200/202** при успешном получении в течение **10 секунд**.
-5. **Быть идемпотентным** -- повторный callback с тем же `request_id` не должен дублировать обработку.
-6. При ответе **4xx** -- сервис не повторяет доставку. При **5xx или таймауте** -- повторяет по настройкам retry.
-
----
-
-## 11. Синхронный ответ (подтверждение приема)
-
-### Успех -- HTTP 202 Accepted
 
 ```json
 {
-  "status": "accepted",
-  "request_id": "req_001",
-  "meta": {
-    "request_id": "req_001",
-    "session_id": "sess_abc",
-    "step_id": 1,
-    "source": "my_bot",
-    "custom_field": "value"
-  },
-  "provider": {
-    "name": "claude",
-    "model": "claude-sonnet-4-6"
-  },
-  "callback_url": "https://your-api.example.com/api/llm-response",
-  "dev_mode": false
-}
-```
-
-Если провайдер или модель не указаны клиентом, в `provider` будет `"auto"`.
-
-### Ошибка -- HTTP 4xx/5xx
-
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Описание ошибки.",
-    "details": {}
-  }
-}
-```
-
-### Полный перечень кодов ошибок
-
-| Код | HTTP | Описание |
-|-----|:----:|----------|
-| `UNAUTHORIZED` | 401 | Отсутствует или невалидный заголовок `Authorization` |
-| `FORBIDDEN` | 403 | API-ключ невалиден, отозван или неактивен |
-| `PROVIDER_NOT_ALLOWED` | 403 | Клиент не имеет доступа к указанному провайдеру |
-| `CALLBACK_URL_NOT_ALLOWED` | 403 | Callback URL не в whitelist клиента |
-| `INVALID_CONTENT_TYPE` | 415 | Content-Type не `application/xml` |
-| `PAYLOAD_TOO_LARGE` | 413 | Размер тела превышает 50 МБ |
-| `RATE_LIMIT_EXCEEDED` | 429 | Превышен лимит запросов. Заголовки: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` |
-| `INVALID_XML` | 400 | XML-документ невалиден |
-| `VERSION_NOT_SUPPORTED` | 400 | Версия != 3.0 |
-| `MISSING_REQUEST_ID` | 400 | Отсутствует `<request_id>` в `<meta>` |
-| `MISSING_STEP_ID` | 400 | `session_id` указан без `step_id` |
-| `MISSING_USER_BLOCK` | 400 | Нет блока с `role="user"` |
-| `MISSING_CALLBACK_URL` | 400 | Отсутствует `<url>` в `<callback>` |
-| `INSECURE_CALLBACK_URL` | 400 | Callback URL использует `http://` (в production) |
-| `PROVIDER_UNKNOWN` | 400 | Провайдер не поддерживается |
-| `UNKNOWN_BLOCK_TYPE` | 400 | Неизвестный `type` блока |
-| `UNKNOWN_FORMAT` | 400 | Неизвестный `format` блока |
-| `INVALID_TYPE_ROLE_COMBINATION` | 400 | Недопустимая комбинация type + role |
-| `MISSING_MEDIA_TYPE` | 400 | `format="base64"` без `media_type` |
-| `MISSING_TOOL_CALL_ID` | 400 | `history_tool_result` без `tool_call_id` |
-| `DUPLICATE_BLOCK_ID` | 400 | Повторяющийся `id` блока |
-| `DANGLING_DESCRIPTION` | 400 | `for` ссылается на несуществующий `id` |
-| `ORPHAN_DESCRIPTION` | 400 | `description` без `for`, за которым нет `data` |
-| `HISTORY_ORDER_VIOLATION` | 400 | Нарушен порядок history-блоков (первый не user или нет чередования) |
-| `INVALID_PARAMETER` | 400 | Некорректное значение параметра (temperature, max_tokens, top_p, stop_sequences, retry.max_attempts, response_format, callback method и т.д.) |
-| `INTERNAL_ERROR` | 500 | Внутренняя ошибка сервиса |
-
----
-
-## 12. Callback-ответ (асинхронный)
-
-### Заголовки
-
-```
-Content-Type: application/json; charset=utf-8
-X-LLM-Signature: sha256=<HMAC-SHA256 hex>
-X-LLM-Timestamp: <unix timestamp>
-X-LLM-Nonce: <uuid v4>
-X-LLM-Request-Id: req_001
-X-LLM-Event-Type: completion | error | stream_token | stream_done | stream_error
-```
-
-Плюс пользовательские заголовки из `<headers>` в секции callback.
-
-### Успешный ответ (X-LLM-Event-Type: completion)
-
-```json
-{
-  "status": "ok",
-  "meta": {
-    "request_id": "req_001",
-    "session_id": "sess_abc",
-    "step_id": 1,
-    "custom_field": "value"
-  },
-  "provider": {
-    "name": "claude",
-    "model": "claude-sonnet-4-6",
-    "is_fallback": false
-  },
-  "result": {
-    "content": "Текст ответа LLM...",
-    "tool_calls": [],
-    "finish_reason": "end_turn",
-    "usage": {
-      "input_tokens": 1523,
-      "output_tokens": 487,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
-    },
-    "reasoning": null
-  },
-  "structured_output_fallback": false,
-  "latency_ms": 3200
-}
-```
-
-### Ответ с вызовом инструмента
-
-```json
-{
-  "status": "ok",
-  "meta": {"request_id": "req_001"},
-  "provider": {"name": "claude", "model": "claude-sonnet-4-6", "is_fallback": false},
-  "result": {
-    "content": "Мне нужно получить текущую цену.",
-    "tool_calls": [
-      {
-        "id": "call_001",
-        "name": "get_price",
-        "arguments": {"symbol": "EURUSD"}
-      }
-    ],
-    "finish_reason": "tool_use",
-    "usage": {
-      "input_tokens": 1523,
-      "output_tokens": 62,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
-    },
-    "reasoning": null
-  },
-  "structured_output_fallback": false,
-  "latency_ms": 1200
-}
-```
-
-**После получения `tool_calls` клиент должен:**
-1. Выполнить запрошенную функцию с полученными `arguments`.
-2. Сформировать новый запрос (step_id++) с полной историей, включая ответ с tool_calls как `history` (format="json") и результат как `history_tool_result`.
-
-### Ответ с reasoning
-
-```json
-{
-  "result": {
-    "content": "Рекомендация: ...",
-    "reasoning": {
-      "content": "<содержимое мышления>",
-      "tokens": 2048
-    }
-  }
-}
-```
-
-### Ответ с ошибкой (X-LLM-Event-Type: error)
-
-```json
-{
-  "status": "error",
-  "meta": {"request_id": "req_001"},
-  "error": {
-    "code": "PROVIDER_UNAVAILABLE",
-    "message": "Provider 'claude' returned HTTP 503.",
-    "details": {}
-  },
-  "latency_ms": 15000
-}
-```
-
-### Описание полей callback-ответа
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `status` | string | `"ok"` или `"error"` |
-| `meta` | object | Все поля из `<meta>` запроса без изменений |
-| `provider.name` | string | Фактический провайдер |
-| `provider.model` | string | Фактическая модель |
-| `provider.is_fallback` | boolean | `true`, если использован fallback |
-| `result.content` | string/null | Текст ответа LLM. Может быть `null` при `tool_use` |
-| `result.tool_calls` | array | Вызовы инструментов. Пустой `[]`, если нет |
-| `result.tool_calls[].id` | string | ID вызова |
-| `result.tool_calls[].name` | string | Имя инструмента |
-| `result.tool_calls[].arguments` | object | Аргументы |
-| `result.finish_reason` | string | `end_turn`, `max_tokens`, `stop_sequence`, `tool_use`, `content_filter` |
-| `result.usage.input_tokens` | integer | Входные токены |
-| `result.usage.output_tokens` | integer | Выходные токены |
-| `result.usage.cache_creation_input_tokens` | integer | Токены, записанные в кеш |
-| `result.usage.cache_read_input_tokens` | integer | Токены, прочитанные из кеша |
-| `result.reasoning` | object/null | `{content, tokens}` если reasoning включен |
-| `structured_output_fallback` | boolean | `true` если structured output был эмулирован |
-| `latency_ms` | integer | Время обработки (мс) |
-| `error.code` | string | Код ошибки (при `status: "error"`) |
-| `error.message` | string | Описание ошибки |
-| `error.details` | object | Дополнительные данные |
-
-### Коды ошибок callback-ответа
-
-| Код | Описание |
-|-----|----------|
-| `PROVIDER_UNAVAILABLE` | Провайдер (и все fallback) вернули ошибку |
-| `PROVIDER_TIMEOUT` | Провайдер не ответил за `<timeout>` секунд |
-| `PROVIDER_RATE_LIMITED` | Провайдер вернул 429, retry и fallback исчерпаны |
-| `PROVIDER_CONTENT_FILTERED` | Контент отклонен модерацией провайдера |
-| `PROVIDER_CONTEXT_LENGTH` | Запрос превысил контекстное окно модели |
-| `PROVIDER_INVALID_REQUEST` | Провайдер вернул ошибку валидации |
-| `PROVIDER_INSUFFICIENT_FUNDS` | Недостаточно средств на аккаунте провайдера |
-| `STREAM_INTERRUPTED` | Стриминг прерван |
-| `CALLBACK_DELIVERY_FAILED` | Не удалось доставить ответ (все retry исчерпаны) |
-| `INTERNAL_ERROR` | Внутренняя ошибка сервиса |
-
----
-
-## 13. Endpoint получения raw-ответов провайдера
-
-Для отладки доступен endpoint получения сырых ответов провайдеров.
-
-| Параметр | Значение |
-|----------|----------|
-| Метод | `GET` |
-| URL | `/api/v1/llm/requests/{requestId}/raw-responses` |
-| Middleware | `auth.api_key`, `rate.api_key` |
-
-### Ограничения
-
-- `requestId`: максимум 256 символов, допустимые символы: `a-zA-Z0-9_-:.`
-- Клиент видит только **свои** raw-ответы (tenant isolation). Чужой `requestId` возвращает 404.
-- Заголовки провайдера фильтруются: удаляются `authorization`, `x-api-key`, `api-key` (case-insensitive).
-
-### Ответ -- 200 OK
-
-```json
-{
-  "status": "ok",
-  "request_id": "req_001",
-  "data": [
+  "model": "claude-sonnet",
+  "max_tokens": 1024,
+  "system": "Ты эксперт по Python.",
+  "messages": [
     {
-      "id": 1,
-      "provider": "claude",
-      "model": "claude-sonnet-4-6",
-      "http_status": 200,
-      "response_body": { ... },
-      "response_headers": { ... },
-      "is_fallback_attempt": false,
-      "duration_ms": 1230,
-      "created_at": "2026-03-22T10:15:30.000000Z"
+      "role": "user",
+      "content": "Как работает GIL в Python?"
     }
   ]
 }
 ```
 
-Один `request_id` может иметь несколько raw-ответов (основная попытка + fallback). Записи возвращаются в хронологическом порядке.
+### Ответ (200 OK)
 
-### Ошибки
+Тело ответа -- стандартный Anthropic Message object:
 
-| HTTP | Код | Описание |
-|:----:|-----|----------|
-| 401 | `UNAUTHORIZED` | Нет/невалидный API key |
-| 403 | `FORBIDDEN` | Отозванный API key |
-| 404 | `REQUEST_NOT_FOUND` | Запрос не найден / чужой / невалидный формат ID |
-| 429 | `RATE_LIMIT_EXCEEDED` | Превышен rate limit |
-
----
-
-## 14. Верификация подписи callback
-
-Каждый callback-запрос подписан HMAC-SHA256.
-
-### Алгоритм (на стороне клиента)
-
-1. Извлечь `X-LLM-Timestamp`, `X-LLM-Nonce`, `X-LLM-Signature` из заголовков.
-2. Проверить что `X-LLM-Timestamp` не старше **300 секунд** (защита от replay-атак).
-3. Сформировать строку: `{timestamp}.{nonce}.{raw_body}`.
-4. Вычислить: `hash_hmac('sha256', string, signing_secret)`.
-5. Сравнить `sha256={hmac}` с `X-LLM-Signature` (timing-safe сравнение).
-6. Отклонять повторные `X-LLM-Nonce` (защита от повторной доставки).
-
-`signing_secret` -- секрет, полученный при создании клиента.
-
-### Пример на PHP
-
-```php
-function verifySignature(Request $request, string $signingSecret): bool
+```json
 {
-    $timestamp = $request->header('X-LLM-Timestamp');
-    $nonce = $request->header('X-LLM-Nonce');
-    $signature = $request->header('X-LLM-Signature');
-    
-    // Проверка replay
-    if (abs(time() - (int)$timestamp) > 300) {
-        return false;
+  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-6",
+  "content": [
+    {
+      "type": "text",
+      "text": "GIL (Global Interpreter Lock) -- это механизм CPython..."
     }
-    
-    $payload = "{$timestamp}.{$nonce}.{$request->getContent()}";
-    $expected = 'sha256=' . hash_hmac('sha256', $payload, $signingSecret);
-    
-    return hash_equals($expected, $signature);
+  ],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 25,
+    "output_tokens": 312,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}
+```
+
+### Заголовки ответа X-Gateway-*
+
+Каждый ответ содержит метаданные gateway:
+
+| Заголовок | Описание | Пример |
+|-----------|----------|--------|
+| `X-Gateway-Request-Id` | Уникальный ID запроса в gateway | `req_abc123def456ghi789jkl012` |
+| `X-Gateway-Anthropic-Request-Id` | ID запроса в Anthropic API | `req_01A2B3C4D5E6F7G8H9` |
+| `X-Gateway-Model-Alias` | Алиас модели, указанный в запросе | `claude-sonnet` |
+| `X-Gateway-Model-Snapshot` | Фактический snapshot модели | `claude-sonnet-4-6` |
+| `X-Gateway-Cost-USD` | Стоимость запроса в USD | `0.004215` |
+| `X-Gateway-Cost-Breakdown` | Детализация стоимости (base64 JSON) | `eyJpbnB1dCI6MC4w...` |
+| `X-Gateway-Spend-Remaining-USD` | Остаток бюджета клиента | `95.780000` или `unlimited` |
+| `X-Gateway-Service-Tier-Used` | Использованный service tier | `standard` |
+| `X-Gateway-Cache-Hit-Tokens` | Количество токенов из кэша | `1500` |
+
+Заголовок `X-Gateway-Cost-Breakdown` содержит base64-кодированный JSON с детализацией:
+
+```json
+{
+  "input": 0.000075,
+  "output": 0.004140,
+  "cache_write": 0.0,
+  "cache_read": 0.0
 }
 ```
 
 ---
 
-## 15. Rate limiting
+## 5. Streaming
 
-- Лимит настраивается per API key (по умолчанию 60 req/min, sliding window).
-- Заголовки в каждом ответе:
+Для streaming-ответов передайте `"stream": true` в теле запроса. Gateway выполняет **pure pass-through** потока SSE (Server-Sent Events) от Anthropic.
+
+### Запрос
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 2048,
+  "stream": true,
+  "messages": [
+    {"role": "user", "content": "Напиши стихотворение о программировании."}
+  ]
+}
+```
+
+### Формат ответа
+
+HTTP-ответ имеет Content-Type `text/event-stream`. Поток состоит из SSE-событий:
+
+```
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_01...","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"usage":{"input_tokens":15,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"В мире"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" нулей и единиц"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":85}}
+
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+### Типы SSE-событий
+
+| Событие | Описание |
+|---------|----------|
+| `message_start` | Начало сообщения, содержит metadata и usage входных токенов |
+| `content_block_start` | Начало блока контента (text, tool_use, thinking) |
+| `content_block_delta` | Инкрементальный фрагмент контента |
+| `content_block_stop` | Завершение блока контента |
+| `message_delta` | Финальные metadata (stop_reason, output usage) |
+| `message_stop` | Конец потока |
+| `ping` | Keep-alive |
+| `error` | Ошибка в процессе генерации |
+
+### Ошибка после HTTP 200
+
+При streaming HTTP-статус 200 отправляется до начала генерации. Если ошибка возникает в процессе, она приходит как SSE-событие `error`:
+
+```
+event: error
+data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
+```
+
+Клиент должен обрабатывать такие ошибки. SDK делает это автоматически, выбрасывая соответствующее исключение.
+
+### Заголовки streaming-ответа
+
+Заголовки `X-Gateway-Request-Id`, `X-Gateway-Model-Alias`, `X-Gateway-Model-Snapshot` доступны в начальном HTTP-ответе. Стоимость (`X-Gateway-Cost-USD`) для streaming недоступна в заголовках, так как рассчитывается после завершения потока -- используйте `usage` из события `message_delta`.
+
+---
+
+## 6. Async + webhook POST /api/v1/messages/async
+
+Асинхронный режим: gateway принимает запрос, помещает его в очередь и доставляет результат на webhook URL клиента.
+
+### Запрос
+
+```
+POST /api/v1/messages/async
+Content-Type: application/json
+Authorization: Bearer gw_live_ваш_ключ
+```
+
+```json
+{
+  "model": "claude-opus",
+  "max_tokens": 4096,
+  "messages": [
+    {"role": "user", "content": "Проведи детальный анализ архитектуры микросервисов."}
+  ],
+  "webhook_url": "https://your-api.example.com/api/llm-callback"
+}
+```
+
+### Ответ (202 Accepted)
+
+```json
+{
+  "request_id": "req_abc123def456ghi789jkl012",
+  "status": "queued",
+  "message": "Request accepted for async processing"
+}
+```
+
+Заголовок: `X-Gateway-Request-Id: req_abc123def456ghi789jkl012`
+
+### Получение результата по ID
+
+Вместо ожидания webhook можно опросить статус:
+
+```
+GET /api/v1/messages/{requestId}
+Authorization: Bearer gw_live_ваш_ключ
+```
+
+### Доставка webhook
+
+Gateway доставляет результат на `webhook_url` в виде **wrapped envelope** -- оригинальный ответ Anthropic обернут в конверт с метаданными gateway:
+
+```json
+{
+  "request_id": "req_abc123def456ghi789jkl012",
+  "status": "completed",
+  "model_alias": "claude-opus",
+  "model_snapshot": "claude-opus-4-6",
+  "cost_usd": 0.015430,
+  "response": {
+    "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-opus-4-6",
+    "content": [
+      {
+        "type": "text",
+        "text": "Архитектура микросервисов..."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 22,
+      "output_tokens": 1847,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  }
+}
+```
+
+### HMAC-подпись webhook
+
+Каждый webhook подписан HMAC-SHA256 с использованием signing secret клиента. Подпись передается в заголовке:
+
+```
+X-Gateway-Signature: sha256=a1b2c3d4e5f6...
+```
+
+### Валидация подписи (Python)
+
+```python
+import hmac
+import hashlib
+
+def verify_webhook(body: bytes, signature_header: str, secret: str) -> bool:
+    expected = "sha256=" + hmac.new(
+        secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+```
+
+### Политика повторных попыток
+
+| Параметр | Значение |
+|----------|----------|
+| Максимум попыток | 10 |
+| Стратегия | Экспоненциальный backoff |
+| Начальная задержка | 10 секунд |
+| Максимальная задержка | 3600 секунд (1 час) |
+| Таймаут каждого запроса | 30 секунд |
+| Grace period URL | 86400 секунд (24 часа) |
+
+Если все попытки исчерпаны, запрос помечается как `failed`. Результат по-прежнему доступен через `GET /api/v1/messages/{requestId}`.
+
+---
+
+## 7. Batch API
+
+Batch API позволяет отправить до 100 000 запросов одним вызовом с 50% скидкой на стоимость обработки. Результаты доступны в течение 24 часов.
+
+### Два режима
+
+**Immediate batch** (`POST /api/v1/batches`) -- отправляет batch немедленно в Anthropic API. Полная совместимость с SDK (`client.messages.batches.create()`).
+
+**Batch-аккумулятор** (`POST /api/v1/messages/batch`) -- запросы накапливаются на стороне gateway и отправляются, когда сработает один из триггеров:
+
+| Триггер | Порог |
+|---------|-------|
+| Количество запросов | 100 |
+| Суммарный размер | 50 МБ |
+| Время накопления | 300 секунд (5 минут) |
+
+### Создание immediate batch
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/batches \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "requests": [
+      {
+        "custom_id": "task-001",
+        "params": {
+          "model": "claude-sonnet",
+          "max_tokens": 1024,
+          "messages": [{"role": "user", "content": "Столица Франции?"}]
+        }
+      },
+      {
+        "custom_id": "task-002",
+        "params": {
+          "model": "claude-sonnet",
+          "max_tokens": 1024,
+          "messages": [{"role": "user", "content": "Столица Японии?"}]
+        }
+      }
+    ]
+  }'
+```
+
+Ответ:
+
+```json
+{
+  "id": "bat_abc123def456ghi789jkl012",
+  "type": "message_batch",
+  "processing_status": "in_progress",
+  "request_counts": {
+    "processing": 2,
+    "succeeded": 0,
+    "errored": 0,
+    "canceled": 0,
+    "expired": 0
+  },
+  "created_at": "2026-04-12T10:00:00Z",
+  "expires_at": "2026-04-13T10:00:00Z"
+}
+```
+
+### Проверка статуса
+
+```bash
+curl https://gateway.example.com/api/v1/batches/bat_abc123def456ghi789jkl012 \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+### Получение результатов
+
+```bash
+curl https://gateway.example.com/api/v1/batches/bat_abc123def456ghi789jkl012/results \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+Формат результатов -- JSONL (каждая строка -- JSON-объект):
+
+```json
+{"custom_id":"task-001","result":{"type":"succeeded","message":{"id":"msg_01...","type":"message","role":"assistant","content":[{"type":"text","text":"Столица Франции -- Париж."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":15}}}}
+{"custom_id":"task-002","result":{"type":"succeeded","message":{"id":"msg_02...","type":"message","role":"assistant","content":[{"type":"text","text":"Столица Японии -- Токио."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":14}}}}
+```
+
+### Управление batch
+
+```bash
+# Отмена
+curl -X POST https://gateway.example.com/api/v1/batches/bat_.../cancel \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+
+# Удаление (после завершения)
+curl -X DELETE https://gateway.example.com/api/v1/batches/bat_... \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+
+# Список всех batch
+curl https://gateway.example.com/api/v1/batches \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+### Стоимость batch
+
+Batch-запросы стоят 50% от обычной цены:
+
+| Модель | Input (обычный) | Input (batch) | Output (обычный) | Output (batch) |
+|--------|:---------------:|:-------------:|:----------------:|:--------------:|
+| claude-opus | $5.00 | $2.50 | $25.00 | $12.50 |
+| claude-sonnet | $3.00 | $1.50 | $15.00 | $7.50 |
+| claude-haiku | $1.00 | $0.50 | $5.00 | $2.50 |
+
+Цены за 1M токенов.
+
+### Лимиты
+
+- Максимум запросов в batch: 100 000
+- Максимальный max_output_tokens в batch: 300 000 (opus, sonnet) / 64 000 (haiku)
+- Время жизни результатов: 24 часа
+
+---
+
+## 8. Sessions (multi-turn)
+
+Sessions -- серверная реализация multi-turn диалогов. Gateway хранит историю сообщений на сервере, позволяя клиенту не передавать всю историю в каждом запросе.
+
+### Когда использовать
+
+- Чат-боты и диалоговые интерфейсы
+- Длительные контексты, которые не помещаются в одно сообщение клиента
+- Сценарии с compaction (сжатие длинного контекста)
+
+### Когда НЕ использовать
+
+- Одиночные запросы без продолжения
+- Batch-обработка
+- Случаи, когда клиент хочет полностью контролировать историю
+
+### Создание сессии
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "system": "Ты полезный ассистент-программист.",
+    "max_tokens": 4096
+  }'
+```
+
+Ответ:
+
+```json
+{
+  "session_id": "ses_abc123def456ghi789jkl012",
+  "model": "claude-sonnet",
+  "created_at": "2026-04-12T10:00:00Z",
+  "expires_at": "2026-05-12T10:00:00Z",
+  "message_count": 0
+}
+```
+
+### Отправка сообщения в сессию
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/sessions/ses_abc123.../messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "content": "Как реализовать паттерн Observer на Python?"
+  }'
+```
+
+Gateway автоматически подставляет историю сессии в контекст. Ответ -- стандартный Anthropic Message object.
+
+### Получение истории
+
+```bash
+curl https://gateway.example.com/api/v1/sessions/ses_abc123.../messages \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+### Compaction
+
+При приближении к лимиту контекстного окна gateway автоматически применяет compaction -- сжатие ранних сообщений в краткое саммари. Клиент получает заголовок `X-Gateway-Warning: auto_resume_limit_reached`, когда compaction активирован. Подробнее -- раздел 15.
+
+### Удаление сессии
+
+```bash
+curl -X DELETE https://gateway.example.com/api/v1/sessions/ses_abc123... \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+Время жизни сессии по умолчанию: 30 дней.
+
+---
+
+## 9. Server-side tools
+
+Gateway поддерживает серверные инструменты Claude, которые выполняются на стороне Anthropic. Для активации инструмента добавьте его в массив `tools` запроса.
+
+### web_search
+
+Поиск в интернете в реальном времени.
+
+**Стоимость:** $10 за 1000 вызовов.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "web_search_20250305",
+      "name": "web_search",
+      "max_uses": 5
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Какие новости в мире AI за последнюю неделю?"}
+  ]
+}
+```
+
+### web_fetch
+
+Загрузка содержимого веб-страницы по URL.
+
+**Стоимость:** бесплатно.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "web_fetch_20250305",
+      "name": "web_fetch"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Загрузи и суммаризируй содержимое https://example.com/article"}
+  ]
+}
+```
+
+### code_execution
+
+Выполнение кода в изолированной песочнице.
+
+**Стоимость:** $0.05/час (1550 бесплатных часов в месяц).
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "code_execution_20250522",
+      "name": "code_execution"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Вычисли первые 20 чисел Фибоначчи и построй график."}
+  ]
+}
+```
+
+### text_editor
+
+Инструмент для редактирования текстовых файлов (создание, чтение, замена).
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "text_editor_20250429",
+      "name": "text_editor"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Создай файл config.yaml с настройками для веб-сервера."}
+  ]
+}
+```
+
+### bash
+
+Выполнение bash-команд в песочнице.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "bash_20250429",
+      "name": "bash"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Покажи список файлов в текущей директории."}
+  ]
+}
+```
+
+### computer_use (beta)
+
+Управление компьютером через скриншоты и действия мыши/клавиатуры.
+
+**Требует beta-заголовок.** Gateway автоматически добавляет необходимый beta-заголовок.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "computer_20250124",
+      "name": "computer",
+      "display_width_px": 1920,
+      "display_height_px": 1080
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Открой браузер и перейди на example.com"}
+  ]
+}
+```
+
+### tool_search
+
+Поиск по доступным инструментам в каталоге.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "tool_search",
+      "name": "tool_search"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Найди инструмент для работы с таблицами."}
+  ]
+}
+```
+
+### memory
+
+Инструмент долговременной памяти для сохранения и извлечения заметок между сессиями.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "memory",
+      "name": "memory"
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Запомни, что мой проект использует Python 3.12 и FastAPI."}
+  ]
+}
+```
+
+### Programmatic tool calling (пользовательские инструменты)
+
+Помимо серверных инструментов, Claude поддерживает пользовательские tools с описанием JSON Schema. Claude решает, когда вызвать инструмент, и возвращает `tool_use` content block. Клиент выполняет инструмент и отправляет `tool_result` обратно.
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Получает текущую погоду для указанного города.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {"type": "string", "description": "Название города"}
+        },
+        "required": ["city"]
+      }
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Какая погода в Москве?"}
+  ]
+}
+```
+
+Ответ с `tool_use`:
+
+```json
+{
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01A2B3C4D5E6",
+      "name": "get_weather",
+      "input": {"city": "Москва"}
+    }
+  ],
+  "stop_reason": "tool_use"
+}
+```
+
+Клиент вызывает свой API погоды и возвращает результат:
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Получает текущую погоду для указанного города.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {"type": "string"}
+        },
+        "required": ["city"]
+      }
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Какая погода в Москве?"},
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01A2B3C4D5E6",
+          "name": "get_weather",
+          "input": {"city": "Москва"}
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01A2B3C4D5E6",
+          "content": "Москва: +15C, облачно, ветер 5 м/с"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 10. Files API
+
+Files API позволяет загружать файлы на сервер и ссылаться на них в запросах по ID, избегая повторной передачи больших файлов.
+
+### Загрузка файла
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/files \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -F "file=@document.pdf"
+```
+
+Ответ:
+
+```json
+{
+  "id": "file_abc123def456ghi789jkl012",
+  "filename": "document.pdf",
+  "mime_type": "application/pdf",
+  "size_bytes": 2458901,
+  "created_at": "2026-04-12T10:00:00Z"
+}
+```
+
+### Использование файла в запросе
+
+Ссылайтесь на загруженный файл через content block типа `file`:
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "file",
+          "source": {
+            "type": "file_id",
+            "file_id": "file_abc123def456ghi789jkl012"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Суммаризируй этот документ."
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Список файлов
+
+```bash
+curl https://gateway.example.com/api/v1/files \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+### Удаление файла
+
+```bash
+curl -X DELETE https://gateway.example.com/api/v1/files/file_abc123... \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+### Лимиты
+
+- Максимальный размер файла: 500 МБ
+- Файлы без обращений автоматически помечаются через 90 дней
+- Безвозвратное удаление: 14 дней после пометки
+
+---
+
+## 11. Token counting и estimation
+
+### Подсчет токенов
+
+Endpoint `POST /api/v1/messages/count_tokens` позволяет узнать количество входных токенов до отправки запроса.
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "messages": [
+      {"role": "user", "content": "Привет, как дела?"}
+    ]
+  }'
+```
+
+Ответ:
+
+```json
+{
+  "input_tokens": 12
+}
+```
+
+### Заголовки ответа
 
 | Заголовок | Описание |
 |-----------|----------|
-| `X-RateLimit-Limit` | Максимум запросов в окне |
-| `X-RateLimit-Remaining` | Оставшиеся запросы |
-| `X-RateLimit-Reset` | Unix timestamp сброса окна |
+| `X-Gateway-Request-Id` | ID запроса |
+| `X-Gateway-Estimated-Cost-USD` | Оценочная стоимость полного запроса |
 
-При превышении -- HTTP 429 с дополнительным заголовком `Retry-After` (секунды).
+Оценка стоимости рассчитывается как: `input_tokens * input_price + (input_tokens * 0.5) * output_price`. Множитель 0.5 -- эвристический коэффициент для оценки выходных токенов.
 
----
+### Оценка бюджета
 
-## 16. Идемпотентность
+Для планирования расходов:
 
-При передаче заголовка `X-Idempotency-Key` повторный запрос с тем же ключом (от того же клиента) в течение **24 часов** вернет кешированный ответ без повторной обработки.
+1. Вызовите `count_tokens` с репрезентативным запросом.
+2. Используйте `X-Gateway-Estimated-Cost-USD` для оценки стоимости одного запроса.
+3. Умножьте на ожидаемое количество запросов.
 
-- Ключ: строка до 256 символов.
-- Проверяется сначала в кеше (Redis), затем в БД.
-- Уникальность ключа -- в рамках одного клиента.
-
----
-
-## 17. Очереди и приоритеты
-
-Запросы обрабатываются в 3 очередях:
-
-| Приоритет | Очередь | Описание |
-|-----------|---------|----------|
-| `high` | high | Обрабатывается первой |
-| `normal` | default | По умолчанию |
-| `low` | low | Обрабатывается последней |
-
-Worker обрабатывает очереди в порядке: `high` -> `default` -> `low`.
-
-- Timeout обработки одного запроса: 600 секунд.
-- Ошибки не повторяются -- при сбое отправляется error callback.
-- Данные pending_prompts и pending_responses хранятся **3 дня**, затем удаляются.
-
----
-
-## 18. Поведение при ошибках провайдера
-
-### Fallback
-
-Если основной провайдер вернул ошибку (5xx, timeout, rate limit), сервис автоматически пробует fallback-провайдера из `<fallback>` цепочки.
-
-### Пауза провайдера
-
-При получении HTTP 429 (rate limit) или HTTP 402 (insufficient funds) от провайдера, сервис **ставит провайдера на паузу**:
-- Rate limit (429 с Retry-After): временная пауза с автовосстановлением.
-- Insufficient funds (402): постоянная пауза. Требуется ручное возобновление: `llm:resume-provider`.
-- Запросы к приостановленному провайдеру **не теряются** -- остаются в очереди и ожидают возобновления.
-
----
-
-## 19. Полный пример
-
-### Первый запрос
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<llm_request version="3.0">
-  <meta>
-    <request_id>req_20260318_001</request_id>
-    <session_id>sess_001</session_id>
-    <step_id>1</step_id>
-    <source>trading_bot</source>
-    <priority>normal</priority>
-  </meta>
-
-  <provider>
-    <name>claude</name>
-    <fallback>
-      <name>openai</name>
-    </fallback>
-  </provider>
-
-  <prompt>
-    <block type="system" role="system">
-      Ты опытный аналитик финансовых рынков.
-    </block>
-
-    <block type="instruction" role="user">
-      Проанализируй EUR/USD на основе технических индикаторов.
-    </block>
-
-    <block type="description" role="user" for="indicators">
-      Значения индикаторов на закрытии последней H1-свечи.
-    </block>
-
-    <block type="data" role="user" id="indicators" label="Tech indicators" format="json">
-      {"RSI": 74.3, "MACD": 0.0023, "MACD_signal": 0.0019}
-    </block>
-
-    <block type="constraint" role="user">
-      Не давай рекомендации с плечом выше 1:5.
-    </block>
-  </prompt>
-
-  <tools tool_choice="auto">
-    <tool>
-      <name>get_price</name>
-      <description>Получить текущую цену инструмента</description>
-      <params>
-        <param name="symbol" type="string" required="true">
-          <description>Тикер, например EURUSD</description>
-        </param>
-      </params>
-    </tool>
-  </tools>
-
-  <parameters>
-    <temperature>0.0</temperature>
-    <max_tokens>2048</max_tokens>
-  </parameters>
-
-  <callback>
-    <url>https://your-api.example.com/api/llm-response</url>
-    <timeout>120</timeout>
-  </callback>
-</llm_request>
-```
-
-### curl-запрос
+Для проверки фактических расходов используйте:
 
 ```bash
-curl -X POST http://llm-gateway.example.com/api/v1/llm/request \
-  -H "Content-Type: application/xml; charset=utf-8" \
-  -H "Authorization: Bearer <api_key>" \
-  -H "X-Idempotency-Key: idem_20260318_001" \
-  -d @request.xml
+curl https://gateway.example.com/api/v1/clients/me/usage \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
 ```
 
 ---
 
-## 20. Важные ограничения
+## 12. Prompt caching
 
-| Ограничение | Значение |
-|-------------|----------|
-| Максимальный размер тела запроса | 50 МБ |
-| Максимальный размер медиа-блока | 20 МБ (base64) |
-| Максимум stop_sequences | 4 |
-| Максимум retry attempts (callback) | 5 |
-| Максимум блоков prefix | 1 |
-| TTL idempotency key | 24 часа |
-| TTL pending данных | 3 дня |
-| Таймаут ответа callback endpoint | 10 секунд |
-| Версия протокола | только 3.0 |
-| Callback URL | только HTTPS (кроме dev/docker) |
-| requestId для raw-responses | макс. 256 символов, `[a-zA-Z0-9_\-:.]` |
+Prompt caching позволяет кэшировать часть контекста между запросами, экономя до 90% стоимости входных токенов и увеличивая пропускную способность до 5 раз.
+
+### Как работает
+
+Anthropic кэширует контент, помеченный точками кэширования (`cache_control`). При повторном запросе с тем же префиксом кэшированные токены не перечитываются, а берутся из кэша.
+
+### Минимальные размеры кэшируемого контента
+
+| Модель | Минимум токенов для кэширования |
+|--------|:-------------------------------:|
+| claude-opus | 1024 |
+| claude-sonnet | 1024 |
+| claude-haiku | 2048 |
+
+Если контент короче минимального размера, кэширование не применяется, но ошибки не возникает.
+
+### TTL кэша
+
+| TTL | Цена записи (множитель от input) | Цена чтения (множитель от input) |
+|-----|:---------------------------------:|:---------------------------------:|
+| 5 минут (по умолчанию) | 1.25x | ~0.1x |
+| 1 час | ~2x | ~0.1x |
+
+### Стратегия размещения cache_control
+
+Кэшируйте то, что повторяется между запросами:
+
+1. **System prompt** -- самый частый кандидат
+2. **Статические инструменты (tools)** -- не меняются между запросами
+3. **Документы и контекст** -- общий контекст для серии запросов
+4. **Начало истории** -- ранние сообщения в multi-turn диалоге
+
+Размещайте `cache_control` в конце кэшируемого блока.
+
+### Правило 20 блоков
+
+Anthropic обрабатывает `cache_control` breakpoints в последних 20 блоках, помеченных `cache_control`. Breakpoints за пределами 20 игнорируются (считая от конца).
+
+### Автоматическое кэширование
+
+Gateway по умолчанию включает автоматическое кэширование верхнего уровня (`auto_top_level`). Это означает, что system prompt и tools автоматически получают `cache_control` breakpoint, если их размер превышает минимальный порог.
+
+### Ручное управление cache_control
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 1024,
+  "system": [
+    {
+      "type": "text",
+      "text": "Ты эксперт по анализу данных. Вот база знаний: ...(длинный текст)...",
+      "cache_control": {"type": "ephemeral"}
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "Проанализируй тренд за Q1."}
+  ]
+}
+```
+
+TTL 1 час (для batch-запросов автоматически):
+
+```json
+{
+  "cache_control": {"type": "ephemeral", "ttl": "1h"}
+}
+```
+
+### Anti-patterns
+
+- Не ставьте `cache_control` на каждый блок -- это не ускоряет, а может замедлить обработку.
+- Не кэшируйте контент, который меняется каждый запрос -- вы платите за запись, но никогда не читаете из кэша.
+- Не кэшируйте контент меньше минимального размера -- breakpoint будет проигнорирован.
+- Помните о лимите 20 breakpoints -- если вы используете больше, самые ранние игнорируются.
+
+### Cache-aware ITPM
+
+При активном кэшировании фактическое потребление ITPM (Input Tokens Per Minute) на стороне Anthropic снижается, так как кэшированные токены обрабатываются быстрее. Это позволяет эффективнее использовать rate limits.
+
+---
+
+## 13. Выбор модели
+
+### Сравнение моделей
+
+| Характеристика | claude-opus | claude-sonnet | claude-haiku |
+|---------------|:-----------:|:-------------:|:------------:|
+| Snapshot | claude-opus-4-6 | claude-sonnet-4-6 | claude-haiku-4-5 |
+| Контекстное окно | 1M | 1M | 200K |
+| Макс. выход | 128K | 64K | 64K |
+| Макс. выход (batch) | 300K | 300K | 64K |
+| Adaptive thinking | да | да | нет |
+| Compaction | да | да | нет |
+| Prefill | нет | да | да |
+| Fast mode | да | нет | нет |
+| Min cache tokens | 1024 | 1024 | 2048 |
+
+### Стоимость за 1M токенов
+
+| | Input | Output | Cache write (5m) | Cache write (1h) | Cache read | Batch input | Batch output |
+|-|:-----:|:------:|:----------------:|:----------------:|:----------:|:-----------:|:------------:|
+| opus | $5.00 | $25.00 | $6.25 | $10.00 | $0.50 | $2.50 | $12.50 |
+| sonnet | $3.00 | $15.00 | $3.75 | $6.00 | $0.30 | $1.50 | $7.50 |
+| haiku | $1.00 | $5.00 | $1.25 | $2.00 | $0.10 | $0.50 | $2.50 |
+
+Fast mode (только opus): множитель 6.0x к стоимости.
+
+### Рекомендации по выбору
+
+**claude-opus** -- сложные задачи: исследования, глубокий анализ, творческое письмо, задачи требующие длинного рассуждения. Максимальный объем выхода. Fast mode для приоритетной обработки.
+
+**claude-sonnet** -- оптимальный баланс цена/качество. Программирование, суммаризация, аналитика, чат-боты. Модель по умолчанию.
+
+**claude-haiku** -- быстрые и дешевые задачи: классификация, извлечение данных, простые ответы, фильтрация. Контекст 200K.
+
+---
+
+## 14. Adaptive thinking
+
+Adaptive thinking (extended thinking) позволяет модели "думать" перед ответом, выделяя отдельный блок рассуждений.
+
+### Поддерживаемые модели
+
+- claude-opus
+- claude-sonnet
+
+claude-haiku НЕ поддерживает adaptive thinking.
+
+### Уровни усилий
+
+| Уровень | Описание |
+|---------|----------|
+| `low` | Минимальное размышление, быстрые ответы |
+| `medium` | Умеренное размышление (по умолчанию) |
+| `high` | Глубокое размышление для сложных задач |
+
+### Активация
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 16000,
+  "thinking": {
+    "type": "enabled",
+    "budget_tokens": 10000
+  },
+  "messages": [
+    {"role": "user", "content": "Реши эту задачу по математике: ..."}
+  ]
+}
+```
+
+### Ответ с thinking
+
+```json
+{
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "Давайте разберем задачу по шагам..."
+    },
+    {
+      "type": "text",
+      "text": "Ответ: 42. Вот объяснение..."
+    }
+  ]
+}
+```
+
+Блок `thinking` содержит внутренние рассуждения модели. Токены thinking учитываются в output.
+
+### Потоковая передача thinking
+
+При `stream: true` блоки thinking передаются через `content_block_start` и `content_block_delta` событий с `type: "thinking"`.
+
+---
+
+## 15. Compaction для длинных сессий
+
+Compaction -- автоматическое сжатие истории диалога при приближении к лимиту контекстного окна.
+
+### Поддерживаемые модели
+
+- claude-opus
+- claude-sonnet
+
+claude-haiku НЕ поддерживает compaction.
+
+### Как работает
+
+Когда суммарный размер контекста приближается к лимиту окна, gateway автоматически активирует compaction:
+
+1. Ранние сообщения сжимаются в краткое саммари.
+2. Саммари помещается в начало контекста вместо оригинальных сообщений.
+3. Недавние сообщения остаются без изменений.
+
+### Что получает клиент
+
+При использовании sessions клиент получает заголовок `X-Gateway-Warning: auto_resume_limit_reached`, сигнализирующий об активации compaction. Ответ при этом приходит стандартный -- compaction прозрачен для клиента.
+
+### Активация через API
+
+Compaction можно включить явно через beta-заголовок:
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 4096,
+  "context_management": {
+    "type": "enabled",
+    "strategy": "compact"
+  },
+  "messages": [...]
+}
+```
+
+Gateway автоматически добавляет необходимые beta-заголовки для compaction.
+
+---
+
+## 16. Обработка ошибок
+
+Формат ошибок gateway полностью совместим с Anthropic API. Классы ошибок SDK (`anthropic.BadRequestError`, `anthropic.AuthenticationError` и т.д.) работают без изменений.
+
+### Формат ошибки
+
+```json
+{
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "message": "model: Snapshot names are not accepted. Use an alias: claude-opus, claude-sonnet, claude-haiku"
+  }
+}
+```
+
+### Коды ошибок
+
+| HTTP | Тип | Описание | Рекомендация |
+|:----:|-----|----------|-------------|
+| 400 | `invalid_request_error` | Невалидный запрос (формат, параметры, snapshot-имя модели) | Исправить запрос |
+| 401 | `authentication_error` | Невалидный или отсутствующий API-ключ | Проверить ключ |
+| 402 | `billing_error` | Бюджет исчерпан | Пополнить бюджет |
+| 403 | `permission_error` | Нет доступа к ресурсу | Проверить права |
+| 404 | `not_found_error` | Ресурс не найден | Проверить ID |
+| 429 | `rate_limit_error` | Превышен rate limit | Подождать и повторить |
+| 500 | `api_error` | Внутренняя ошибка gateway | Повторить позже |
+| 502 | `api_error` | Ошибка upstream (Anthropic) | Повторить позже |
+| 503 | `overloaded_error` | Сервис перегружен | Exponential backoff |
+| 504 | `timeout_error` | Таймаут запроса | Повторить или уменьшить max_tokens |
+
+### Рекомендации по retry
+
+| Код | Retry | Стратегия |
+|:---:|:-----:|-----------|
+| 400 | нет | Ошибка в запросе |
+| 401 | нет | Проблема с аутентификацией |
+| 402 | нет | Проблема с биллингом |
+| 429 | да | Exponential backoff, учитывать `retry-after` |
+| 500 | да | До 3 попыток с backoff |
+| 502 | да | До 3 попыток с backoff |
+| 503 | да | Exponential backoff, начиная с 5 секунд |
+| 504 | да | Увеличить timeout или уменьшить задачу |
+
+### Совместимость с SDK
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+try:
+    message = client.messages.create(
+        model="claude-sonnet",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": "Привет!"}],
+    )
+except anthropic.BadRequestError as e:
+    print(f"Невалидный запрос: {e.message}")
+except anthropic.AuthenticationError:
+    print("Проверьте API-ключ")
+except anthropic.RateLimitError:
+    print("Rate limit, повторите позже")
+except anthropic.APIStatusError as e:
+    print(f"Ошибка API: {e.status_code} {e.message}")
+```
+
+---
+
+## 17. Rate limits
+
+### Уровни ограничений
+
+Gateway применяет rate limits на уровне API-ключа клиента. Лимит RPM (requests per minute) задается при создании клиента (по умолчанию 60).
+
+### Заголовки rate limit
+
+Gateway пробрасывает стандартные заголовки Anthropic rate limit:
+
+| Заголовок | Описание |
+|-----------|----------|
+| `anthropic-ratelimit-requests-limit` | Лимит запросов |
+| `anthropic-ratelimit-requests-remaining` | Оставшиеся запросы |
+| `anthropic-ratelimit-requests-reset` | Время сброса |
+| `anthropic-ratelimit-tokens-limit` | Лимит токенов |
+| `anthropic-ratelimit-tokens-remaining` | Оставшиеся токены |
+| `anthropic-ratelimit-tokens-reset` | Время сброса токенов |
+
+Дополнительно gateway добавляет:
+
+| Заголовок | Описание |
+|-----------|----------|
+| `X-Gateway-Spend-Remaining-USD` | Оставшийся бюджет в USD (или `unlimited`) |
+
+### Обработка 429
+
+При получении HTTP 429:
+
+1. Прочитайте заголовок `retry-after` (если есть) -- количество секунд до разрешенного повтора.
+2. Если `retry-after` отсутствует, используйте exponential backoff: 1s, 2s, 4s, 8s, 16s.
+3. SDK автоматически обрабатывает retry для 429 (настраиваемо через `max_retries`).
+
+```python
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+    max_retries=3,
+)
+```
+
+### ITPM / OTPM
+
+Input Tokens Per Minute (ITPM) и Output Tokens Per Minute (OTPM) контролируются на стороне Anthropic. При их превышении Anthropic возвращает 429, который gateway пробрасывает клиенту. Использование prompt caching снижает эффективное потребление ITPM.
+
+---
+
+## 18. Полные примеры
+
+### 18.1. Простой текстовый запрос
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "Объясни разницу между TCP и UDP."}
+    ],
+)
+
+print(message.content[0].text)
+print(f"Tokens: {message.usage.input_tokens} in, {message.usage.output_tokens} out")
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {"role": "user", "content": "Объясни разницу между TCP и UDP."}
+    ]
+  }'
+```
+
+---
+
+### 18.2. Streaming
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+with client.messages.stream(
+    model="claude-sonnet",
+    max_tokens=2048,
+    messages=[
+        {"role": "user", "content": "Напиши пошаговый гайд по настройке Nginx."}
+    ],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+print()
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -N \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 2048,
+    "stream": true,
+    "messages": [
+      {"role": "user", "content": "Напиши пошаговый гайд по настройке Nginx."}
+    ]
+  }'
+```
+
+---
+
+### 18.3. Vision (image URL)
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=1024,
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": "https://example.com/chart.png",
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": "Опиши, что изображено на графике.",
+                },
+            ],
+        }
+    ],
+)
+
+print(message.content[0].text)
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "image",
+            "source": {
+              "type": "url",
+              "url": "https://example.com/chart.png"
+            }
+          },
+          {
+            "type": "text",
+            "text": "Опиши, что изображено на графике."
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+---
+
+### 18.4. Vision (Files API)
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+# Загрузка файла
+with open("screenshot.png", "rb") as f:
+    uploaded = client.files.upload(file=f)
+
+# Использование в запросе
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=1024,
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "file",
+                    "source": {
+                        "type": "file_id",
+                        "file_id": uploaded.id,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": "Что изображено на скриншоте?",
+                },
+            ],
+        }
+    ],
+)
+
+print(message.content[0].text)
+```
+
+**curl:**
+
+```bash
+# Загрузка файла
+FILE_ID=$(curl -s -X POST https://gateway.example.com/api/v1/files \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -F "file=@screenshot.png" | jq -r '.id')
+
+# Использование в запросе
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "file",
+            "source": {
+              "type": "file_id",
+              "file_id": "'"$FILE_ID"'"
+            }
+          },
+          {
+            "type": "text",
+            "text": "Что изображено на скриншоте?"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+---
+
+### 18.5. PDF-документ
+
+**Python SDK:**
+
+```python
+import anthropic
+import base64
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+with open("report.pdf", "rb") as f:
+    pdf_data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=4096,
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": pdf_data,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": "Суммаризируй ключевые выводы этого отчета.",
+                },
+            ],
+        }
+    ],
+)
+
+print(message.content[0].text)
+```
+
+**curl:**
+
+```bash
+PDF_BASE64=$(base64 -w 0 report.pdf)
+
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 4096,
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "document",
+            "source": {
+              "type": "base64",
+              "media_type": "application/pdf",
+              "data": "'"$PDF_BASE64"'"
+            }
+          },
+          {
+            "type": "text",
+            "text": "Суммаризируй ключевые выводы этого отчета."
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+---
+
+### 18.6. Custom tool use
+
+**Python SDK:**
+
+```python
+import anthropic
+import json
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+tools = [
+    {
+        "name": "get_stock_price",
+        "description": "Получает текущую цену акции по тикеру.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Тикер акции (напр. AAPL)"},
+            },
+            "required": ["ticker"],
+        },
+    }
+]
+
+messages = [{"role": "user", "content": "Какая сейчас цена акций Apple?"}]
+
+response = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=1024,
+    tools=tools,
+    messages=messages,
+)
+
+if response.stop_reason == "tool_use":
+    tool_block = next(b for b in response.content if b.type == "tool_use")
+    print(f"Tool call: {tool_block.name}({json.dumps(tool_block.input)})")
+
+    # Клиент вызывает свой API и возвращает результат
+    messages.append({"role": "assistant", "content": response.content})
+    messages.append({
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": tool_block.id,
+                "content": "AAPL: $185.50 (+1.2%)",
+            }
+        ],
+    })
+
+    final = client.messages.create(
+        model="claude-sonnet",
+        max_tokens=1024,
+        tools=tools,
+        messages=messages,
+    )
+    print(final.content[0].text)
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 1024,
+    "tools": [
+      {
+        "name": "get_stock_price",
+        "description": "Получает текущую цену акции по тикеру.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "ticker": {"type": "string", "description": "Тикер акции"}
+          },
+          "required": ["ticker"]
+        }
+      }
+    ],
+    "messages": [
+      {"role": "user", "content": "Какая сейчас цена акций Apple?"}
+    ]
+  }'
+```
+
+---
+
+### 18.7. Web search tool
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=4096,
+    tools=[
+        {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 3,
+        }
+    ],
+    messages=[
+        {"role": "user", "content": "Какие последние новости о квантовых компьютерах?"}
+    ],
+)
+
+for block in message.content:
+    if hasattr(block, "text"):
+        print(block.text)
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 4096,
+    "tools": [
+      {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "max_uses": 3
+      }
+    ],
+    "messages": [
+      {"role": "user", "content": "Какие последние новости о квантовых компьютерах?"}
+    ]
+  }'
+```
+
+---
+
+### 18.8. Prompt caching (manual breakpoint)
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+long_system = "Ты эксперт-юрист. Вот полный текст закона: " + "..." * 500
+
+message = client.messages.create(
+    model="claude-sonnet",
+    max_tokens=2048,
+    system=[
+        {
+            "type": "text",
+            "text": long_system,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ],
+    messages=[
+        {"role": "user", "content": "Какие штрафы предусмотрены статьей 12?"}
+    ],
+)
+
+print(message.content[0].text)
+print(f"Cache created: {message.usage.cache_creation_input_tokens}")
+print(f"Cache read: {message.usage.cache_read_input_tokens}")
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "max_tokens": 2048,
+    "system": [
+      {
+        "type": "text",
+        "text": "Ты эксперт-юрист. Вот полный текст закона: ...(длинный текст)...",
+        "cache_control": {"type": "ephemeral"}
+      }
+    ],
+    "messages": [
+      {"role": "user", "content": "Какие штрафы предусмотрены статьей 12?"}
+    ]
+  }'
+```
+
+---
+
+### 18.9. Token counting
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+result = client.messages.count_tokens(
+    model="claude-sonnet",
+    messages=[
+        {
+            "role": "user",
+            "content": "Напиши детальный обзор архитектуры микросервисов.",
+        }
+    ],
+)
+
+print(f"Input tokens: {result.input_tokens}")
+```
+
+**curl:**
+
+```bash
+curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-sonnet",
+    "messages": [
+      {"role": "user", "content": "Напиши детальный обзор архитектуры микросервисов."}
+    ]
+  }'
+```
+
+---
+
+### 18.10. Batch submission
+
+**Python SDK:**
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    api_key="gw_live_ваш_ключ",
+    base_url="https://gateway.example.com/api/v1",
+)
+
+batch = client.messages.batches.create(
+    requests=[
+        {
+            "custom_id": f"translate-{i}",
+            "params": {
+                "model": "claude-haiku",
+                "max_tokens": 512,
+                "messages": [
+                    {"role": "user", "content": f"Переведи на английский: '{text}'"}
+                ],
+            },
+        }
+        for i, text in enumerate([
+            "Привет, мир!",
+            "Как дела?",
+            "Спасибо за помощь.",
+            "До свидания.",
+        ])
+    ]
+)
+
+print(f"Batch ID: {batch.id}")
+print(f"Status: {batch.processing_status}")
+
+# Ожидание результатов (polling)
+import time
+while True:
+    status = client.messages.batches.retrieve(batch.id)
+    if status.processing_status == "ended":
+        break
+    time.sleep(10)
+
+# Получение результатов
+for result in client.messages.batches.results(batch.id):
+    print(f"{result.custom_id}: {result.result.message.content[0].text}")
+```
+
+**curl:**
+
+```bash
+# Создание batch
+curl -X POST https://gateway.example.com/api/v1/batches \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "requests": [
+      {
+        "custom_id": "translate-0",
+        "params": {
+          "model": "claude-haiku",
+          "max_tokens": 512,
+          "messages": [{"role": "user", "content": "Переведи на английский: Привет, мир!"}]
+        }
+      },
+      {
+        "custom_id": "translate-1",
+        "params": {
+          "model": "claude-haiku",
+          "max_tokens": 512,
+          "messages": [{"role": "user", "content": "Переведи на английский: Как дела?"}]
+        }
+      }
+    ]
+  }'
+
+# Проверка статуса
+curl https://gateway.example.com/api/v1/batches/bat_ID \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+
+# Получение результатов
+curl https://gateway.example.com/api/v1/batches/bat_ID/results \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+---
+
+### 18.11. Session-based chat
+
+**Python SDK:**
+
+```python
+import httpx
+
+BASE = "https://gateway.example.com/api/v1"
+HEADERS = {
+    "Authorization": "Bearer gw_live_ваш_ключ",
+    "Content-Type": "application/json",
+}
+
+# Создание сессии
+resp = httpx.post(f"{BASE}/sessions", headers=HEADERS, json={
+    "model": "claude-sonnet",
+    "system": "Ты ассистент-программист на Python.",
+    "max_tokens": 4096,
+})
+session = resp.json()
+session_id = session["session_id"]
+print(f"Session: {session_id}")
+
+# Первое сообщение
+resp = httpx.post(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS, json={
+    "content": "Как реализовать singleton на Python?",
+})
+print(resp.json()["content"][0]["text"])
+
+# Второе сообщение (контекст сохранен)
+resp = httpx.post(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS, json={
+    "content": "А теперь покажи thread-safe вариант.",
+})
+print(resp.json()["content"][0]["text"])
+
+# История сессии
+resp = httpx.get(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS)
+for msg in resp.json():
+    print(f"[{msg['role']}]: {msg['content'][:80]}...")
+```
+
+**curl:**
+
+```bash
+# Создание сессии
+SESSION_ID=$(curl -s -X POST https://gateway.example.com/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{"model": "claude-sonnet", "system": "Ты ассистент.", "max_tokens": 4096}' \
+  | jq -r '.session_id')
+
+# Первое сообщение
+curl -X POST "https://gateway.example.com/api/v1/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{"content": "Как реализовать singleton?"}'
+
+# Второе сообщение
+curl -X POST "https://gateway.example.com/api/v1/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{"content": "А теперь покажи thread-safe вариант."}'
+```
+
+---
+
+### 18.12. Async + webhook
+
+**curl:**
+
+```bash
+# Отправка async-запроса
+curl -X POST https://gateway.example.com/api/v1/messages/async \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -d '{
+    "model": "claude-opus",
+    "max_tokens": 8192,
+    "messages": [
+      {"role": "user", "content": "Напиши детальный анализ текущего состояния рынка AI."}
+    ],
+    "webhook_url": "https://your-api.example.com/api/llm-callback"
+  }'
+
+# Ответ: 202 Accepted
+# {
+#   "request_id": "req_abc123def456ghi789jkl012",
+#   "status": "queued",
+#   "message": "Request accepted for async processing"
+# }
+
+# Опциональный polling (вместо ожидания webhook)
+curl https://gateway.example.com/api/v1/messages/req_abc123def456ghi789jkl012 \
+  -H "Authorization: Bearer gw_live_ваш_ключ"
+```
+
+Webhook получит wrapped envelope (см. раздел 6) с подписью `X-Gateway-Signature`.
+
+Пример обработчика на стороне клиента (Python / Flask):
+
+```python
+import hmac
+import hashlib
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+SIGNING_SECRET = "ваш_signing_secret"
+
+@app.route("/api/llm-callback", methods=["POST"])
+def llm_callback():
+    signature = request.headers.get("X-Gateway-Signature", "")
+    expected = "sha256=" + hmac.new(
+        SIGNING_SECRET.encode(), request.data, hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    payload = request.json
+    request_id = payload["request_id"]
+    status = payload["status"]
+
+    if status == "completed":
+        response = payload["response"]
+        text = response["content"][0]["text"]
+        print(f"[{request_id}] Result: {text[:200]}...")
+    elif status == "error":
+        print(f"[{request_id}] Error: {payload.get('error')}")
+
+    return jsonify({"ok": True}), 200
+```
