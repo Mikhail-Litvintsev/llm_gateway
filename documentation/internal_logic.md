@@ -537,7 +537,7 @@ Multi-turn сессии с персистентной историей.
 
 4. **Нормализация messages** -- `normaliseMessageContent()`: search_result блоки проверяются на required keys (title, source, content).
 
-5. **Разрешение file sources** -- `resolveFileSourcesInMessages()`: source.type=file проходит через `FileSourceResolver` для подстановки Anthropic file_id по gateway file_id.
+5. **Разрешение file sources и vision** -- `resolveFileSourcesInMessages()`: source.type=file проходит через `FileSourceResolver` для подстановки Anthropic file_id по gateway file_id. Vision (image content blocks с base64/url/file_id source) обрабатывается нативно Anthropic API без трансформации.
 
 6. **Нормализация tools** -- `normaliseTools()`: серверные инструменты (web_search, web_fetch, code_execution, tool_search, memory, bash, text_editor, computer) нормализуются отдельно. Custom tools проверяются на PTC (allowed_callers). Лимит custom tools: 128 (или 10000 с tool_search).
 
@@ -965,8 +965,6 @@ HTTP status: 200 при Ok/Degraded, 503 при Down.
 |--------|---------|----------|
 | `RetryFailedWebhooks` | everyMinute, onOneServer | Retry webhook-ов со статусом processing и next_attempt_at <= now |
 | `ClaudeApiPingScheduled` | everyMinute, onOneServer, queue: low | Пинг Anthropic API, запись результата в Redis |
-| `llm:cleanup-expired` | hourly, withoutOverlapping | Очистка просроченных async_pending записей |
-| `llm:mark-timed-out` | everyFiveMinutes, withoutOverlapping | Пометка зависших запросов как timed out |
 | `requests:cleanup` | daily 03:00, withoutOverlapping | Удаление старых request_raw записей (retention) |
 | `webhook:cleanup-expired-secrets` | hourly, withoutOverlapping | Очистка просроченных previous signing secrets |
 | `claude:sync-capabilities` | weekly Sunday 03:00, onOneServer | Синхронизация capabilities моделей с Anthropic API |

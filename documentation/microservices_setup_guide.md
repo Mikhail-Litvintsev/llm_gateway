@@ -888,8 +888,6 @@ php artisan schedule:work
 | Задача | Расписание | Описание |
 |---|---|---|
 | `RetryFailedWebhooks` | Каждую минуту | Повторная доставка неудавшихся webhook-ов |
-| `llm:cleanup-expired` | Каждый час | Очистка expired pending prompts/responses |
-| `llm:mark-timed-out` | Каждые 5 минут | Пометка зависших запросов как timed out |
 | `ClaudeApiPingScheduled` | Каждую минуту | Проверка доступности Anthropic API |
 | `requests:cleanup` | Ежедневно в 03:00 | Очистка старых записей в request_log |
 | `webhook:cleanup-expired-secrets` | Каждый час | Удаление просроченных previous signing secrets |

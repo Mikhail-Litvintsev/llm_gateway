@@ -8,6 +8,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('llm:retry-callbacks')->everyMinute();
-Schedule::command('llm:cleanup-expired')->hourly()->withoutOverlapping()->appendOutputTo(storage_path('logs/cleanup.log'));
-Schedule::command('llm:mark-timed-out')->everyFiveMinutes()->withoutOverlapping();
+Schedule::call(new \App\Jobs\Scheduled\RetryFailedWebhooks())->everyMinute()->name('retry-failed-webhooks')->onOneServer();
+Schedule::job(new \App\Jobs\Scheduled\ClaudeApiPingScheduled, 'low')->everyMinute()->name('claude-api-ping')->onOneServer();
+Schedule::command('requests:cleanup')->dailyAt('03:00')->withoutOverlapping();
+Schedule::command('webhook:cleanup-expired-secrets')->hourly()->withoutOverlapping();
+Schedule::command('claude:sync-capabilities')->weekly()->sundays()->at('03:00')->withoutOverlapping()->onOneServer();

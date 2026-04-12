@@ -968,6 +968,46 @@ Gateway поддерживает серверные инструменты Claud
 }
 ```
 
+### Citations
+
+Claude может возвращать citations -- ссылки на исходные фрагменты текста, которые использовались для генерации ответа. Citations автоматически включаются при наличии документов в контексте.
+
+### Search result blocks (RAG)
+
+Для реализации RAG-паттерна передавайте результаты поиска как `search_result` content blocks. Claude будет использовать их как контекст и может ссылаться на них через citations.
+
+### Structured outputs (output_config)
+
+Для получения структурированного JSON-ответа используйте параметр `output_config` с JSON Schema:
+
+```json
+{
+  "model": "claude-sonnet",
+  "max_tokens": 1024,
+  "output_config": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},
+        "confidence": {"type": "number"}
+      },
+      "required": ["sentiment", "confidence"]
+    }
+  },
+  "messages": [
+    {"role": "user", "content": "Проанализируй тональность: 'Отличный продукт, рекомендую!'"}
+  ]
+}
+```
+
+### MCP connector (beta)
+
+MCP (Model Context Protocol) позволяет подключать внешние серверы инструментов. Gateway автоматически добавляет beta-заголовок `mcp-client-2025-11-20`.
+
+### Inference geo
+
+По умолчанию все запросы обрабатываются в регионе US. Это настраивается на уровне шлюза.
+
 ---
 
 ## 10. Files API
