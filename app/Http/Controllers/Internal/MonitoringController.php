@@ -2,17 +2,10 @@
 
 namespace App\Http\Controllers\Internal;
 
-use App\Components\CallbackDelivery\Enums\DeliveryStatus;
-use App\Components\RequestPipeline\Enums\RequestStatus;
 use App\Http\Controllers\Controller;
-use App\Models\PendingPrompt;
-use App\Models\PendingResponse;
-use App\Models\RequestLog;
-use App\Models\ResponseLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Queue;
 
 class MonitoringController extends Controller
 {

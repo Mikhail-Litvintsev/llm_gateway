@@ -14,9 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 
         $middleware->alias([
-            'auth.api_key' => \App\Http\Middleware\AuthenticateApiKey::class,
             'internal.network' => \App\Http\Middleware\InternalNetworkOnly::class,
-            'rate.api_key' => \App\Http\Middleware\RateLimitApiKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
