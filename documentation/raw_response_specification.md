@@ -1,241 +1,128 @@
-# Спецификация: Endpoint получения сырых ответов провайдера
+# Хранение сырых данных запросов и ответов
 
-## Обзор
+## Назначение
 
-Клиентский endpoint для получения сырых (raw) ответов от LLM-провайдеров по `request_id`. Позволяет клиенту запросить оригинальный ответ провайдера для целей отладки и аудита.
-
----
-
-## Endpoint
-
-| Параметр | Значение |
-|----------|----------|
-| Метод | `GET` |
-| URL | `/api/v1/llm/requests/{requestId}/raw-responses` |
-| Middleware | `auth.api_key`, `rate.api_key` |
-| Content-Type ответа | `application/json` |
-
-### Параметр пути
-
-| Имя | Тип | Обязательный | Описание |
-|-----|-----|--------------|----------|
-| `requestId` | string | да | Идентификатор запроса (`request_id` из `request_log`) |
+Шлюз сохраняет сырые тела запросов и ответов для audit, debug, replay и compliance.
+Данные распределены по трём таблицам: `requests` (структурированные метаданные),
+`request_usage` (детальный расход токенов и стоимость), `request_raw` (полные тела
+запроса и ответа в JSON).
 
 ---
 
-## Аутентификация и авторизация
+## Схема `requests`
 
-1. **Аутентификация** — стандартная через `Authorization: Bearer {api_key}` (middleware `auth.api_key`).
-2. **Rate limiting** — стандартный per API key (middleware `rate.api_key`).
-3. **Изоляция данных (tenant isolation)** — клиент может получить **только** raw-ответы, принадлежащие его собственным запросам. Проверка: `request_log.api_client_id = authenticated_client.id`. Если `request_id` существует, но принадлежит другому клиенту, возвращается `404` (не `403`), чтобы не раскрывать факт существования чужих запросов.
+Структурированный лог каждого запроса.
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `request_id` | `char(28)` PK | Уникальный ID запроса (`req_...`) |
+| `client_id` | `bigint unsigned` FK → `clients.id` | Клиент-владелец |
+| `endpoint` | `enum` | Тип: `messages`, `batch_item`, `count_tokens`, `session_message` |
+| `mode` | `enum` | Режим: `sync`, `sync_stream`, `async_callback`, `batch` |
+| `model_alias` | `varchar` | Запрошенный алиас (`claude-sonnet`) |
+| `model_snapshot` | `varchar` | Реальный snapshot (`claude-sonnet-4-6`) |
+| `anthropic_request_id` | `varchar` nullable | ID запроса на стороне Anthropic |
+| `anthropic_organization_id` | `varchar` nullable | Organization ID из ответа Anthropic |
+| `status` | `varchar(32)` | Статус: `queued`, `processing`, `completed`, `failed`, `timeout` |
+| `http_status` | `smallint unsigned` nullable | HTTP-код от Anthropic (200, 400, 429, ...) |
+| `error_type` | `varchar` nullable | Тип ошибки (`overloaded_error`, `rate_limit_error`, ...) |
+| `error_message` | `text` nullable | Текст ошибки |
+| `service_tier_used` | `varchar` nullable | Использованный tier (`standard`, `auto`) |
+| `created_at` | `datetime` | Время приёма запроса |
+| `started_at` | `datetime` nullable | Время начала обработки Anthropic |
+| `completed_at` | `datetime` nullable | Время получения ответа |
+
+Индексы: `(client_id, created_at)`, `(status)`.
 
 ---
 
-## Логика обработки
+## Схема `request_usage`
 
-### Алгоритм
+Детальный расход токенов и стоимость. Связан 1:1 с `requests`.
 
-1. Аутентифицировать клиента (middleware).
-2. Найти запись в `request_log` по `request_id` **и** `api_client_id` текущего клиента.
-3. Если запись не найдена — вернуть `404`.
-4. Получить все связанные записи из `raw_responses` по `request_log_id`.
-5. Если записей нет (запрос найден, но raw-ответы отсутствуют) — вернуть `200` с пустым массивом.
-6. Вернуть `200` с массивом raw-ответов.
-
-### Область данных
-
-Один `request_id` может иметь несколько raw-ответов (основная попытка + fallback-попытки). Все записи возвращаются в хронологическом порядке (`created_at ASC`).
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `request_id` | `char(28)` PK, FK → `requests.request_id` | |
+| `input_tokens` | `bigint unsigned` | Входные токены |
+| `output_tokens` | `bigint unsigned` | Выходные токены |
+| `cache_creation_5m_tokens` | `bigint unsigned` | Записано в кэш (5m TTL) |
+| `cache_creation_1h_tokens` | `bigint unsigned` | Записано в кэш (1h TTL) |
+| `cache_read_tokens` | `bigint unsigned` | Прочитано из кэша |
+| `thinking_tokens` | `bigint unsigned` | Токены thinking |
+| `server_tool_web_search_count` | `int unsigned` | Количество web_search вызовов |
+| `server_tool_web_fetch_count` | `int unsigned` | Количество web_fetch вызовов |
+| `server_tool_code_exec_count` | `int unsigned` | Количество code_execution вызовов |
+| `server_tool_tool_search_count` | `int unsigned` | Количество tool_search вызовов |
+| `cost_usd` | `decimal(12,8)` | Итоговая стоимость в USD |
+| `cost_breakdown` | `json` | Детализация стоимости по категориям |
+| `iterations_json` | `json` nullable | Итерации (для agentic loops) |
+| `rate_limit_headers` | `json` nullable | Заголовки rate limit от Anthropic |
 
 ---
 
-## Формат ответа
+## Схема `request_raw`
 
-### Успешный ответ — 200 OK
+Полные тела запроса и ответа. Связан 1:1 с `requests`.
 
-```json
-{
-    "status": "ok",
-    "request_id": "abc-123",
-    "data": [
-        {
-            "id": 1,
-            "provider": "claude",
-            "model": "claude-sonnet-4-6",
-            "http_status": 200,
-            "response_body": { ... },
-            "response_headers": { ... },
-            "is_fallback_attempt": false,
-            "duration_ms": 1230,
-            "created_at": "2026-03-22T10:15:30.000000Z"
-        },
-        {
-            "id": 2,
-            "provider": "openai",
-            "model": "gpt-4o",
-            "http_status": 200,
-            "response_body": { ... },
-            "response_headers": null,
-            "is_fallback_attempt": true,
-            "duration_ms": 980,
-            "created_at": "2026-03-22T10:15:31.000000Z"
-        }
-    ]
-}
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `request_id` | `char(28)` PK, FK → `requests.request_id` | |
+| `request_payload` | `longtext` | Полное тело запроса (JSON) |
+| `response_payload` | `longtext` nullable | Полное тело ответа (JSON). `null` если запрос ещё обрабатывается |
+| `retention_until` | `datetime` | Дата автоматического удаления |
+
+---
+
+## Lifecycle
+
+1. **Создание**: запись в `requests` создаётся при приёме запроса. `request_raw` создаётся одновременно с телом запроса. `retention_until` = `created_at` + retention period.
+2. **Обновление**: после получения ответа от Anthropic заполняются `response_payload` в `request_raw`, `request_usage`, и поля `completed_at`/`http_status`/`status` в `requests`.
+3. **Очистка**: scheduled команда `requests:cleanup` удаляет записи `request_raw` с `retention_until < now()`. Записи `requests` и `request_usage` сохраняются для долгосрочного аудита.
+
+---
+
+## Retention policy
+
+- `request_raw`: хранится `raw_log_retention_days` дней (по умолчанию 14, настраивается в `config/llm.php`).
+- `requests` и `request_usage`: хранятся бессрочно (audit trail). При необходимости архивировать вручную.
+
+---
+
+## Доступ для debug
+
+Поиск запроса по ID:
+
+```sql
+SELECT r.*, ru.input_tokens, ru.output_tokens, ru.cost_usd
+FROM requests r
+LEFT JOIN request_usage ru ON ru.request_id = r.request_id
+WHERE r.request_id = 'req_...';
 ```
 
-### Успешный ответ без данных — 200 OK
+Получение сырого payload:
 
-```json
-{
-    "status": "ok",
-    "request_id": "abc-123",
-    "data": []
-}
+```sql
+SELECT request_payload, response_payload
+FROM request_raw
+WHERE request_id = 'req_...';
 ```
 
-### Ошибки
+Запросы клиента за период:
 
-#### 401 Unauthorized — отсутствует или невалидный API key
-
-```json
-{
-    "status": "error",
-    "error": {
-        "code": "UNAUTHORIZED",
-        "message": "Missing or invalid Authorization header."
-    }
-}
-```
-
-#### 403 Forbidden — отозванный API key
-
-```json
-{
-    "status": "error",
-    "error": {
-        "code": "FORBIDDEN",
-        "message": "API key is revoked or inactive."
-    }
-}
-```
-
-#### 404 Not Found — запрос не найден или принадлежит другому клиенту
-
-```json
-{
-    "status": "error",
-    "error": {
-        "code": "REQUEST_NOT_FOUND",
-        "message": "Request not found."
-    }
-}
-```
-
-#### 429 Too Many Requests — превышен rate limit
-
-```json
-{
-    "status": "error",
-    "error": {
-        "code": "RATE_LIMIT_EXCEEDED",
-        "message": "Rate limit exceeded."
-    }
-}
-```
-
-Заголовки: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
-
----
-
-## TTL и доступность данных
-
-Записи в `raw_responses` каскадно удаляются при удалении связанной записи `request_log`. Отдельного TTL для `raw_responses` нет, но `request_log` может очищаться по политике retention. Клиент должен быть осведомлен, что данные могут быть недоступны для старых запросов.
-
----
-
-## Безопасность
-
-| Аспект | Реализация |
-|--------|------------|
-| Аутентификация | Bearer token, SHA-256 hash lookup |
-| Авторизация | Tenant isolation — фильтр по `api_client_id` |
-| Информационная утечка | 404 вместо 403 для чужих запросов |
-| Rate limiting | Стандартный per API key |
-| Валидация входа | `requestId` — строка, максимум 256 символов, regex `^[a-zA-Z0-9_\-:.]+$` |
-| SQL injection | Eloquent ORM (параметризованные запросы) |
-| Sensitive headers | Поле `response_headers` может содержать заголовки провайдера — при необходимости фильтровать чувствительные (Authorization, api-key) перед отдачей клиенту |
-
-### Фильтрация заголовков ответа провайдера
-
-Из `response_headers` перед возвратом клиенту **удаляются** заголовки, которые могут содержать credentials шлюза:
-
-- `authorization`
-- `x-api-key`
-- `api-key`
-
-Сравнение имён заголовков — case-insensitive.
-
----
-
-## Валидация requestId
-
-Параметр `requestId` из URL должен проходить валидацию:
-
-- Максимальная длина: 256 символов.
-- Допустимые символы: `a-z`, `A-Z`, `0-9`, `_`, `-`, `:`, `.`.
-- При невалидном формате — возвращать `404` (не `400`), чтобы не раскрывать внутреннюю логику валидации.
-
----
-
-## Маршрутизация
-
-Добавить в `routes/api.php`:
-
-```php
-Route::get('/v1/llm/requests/{requestId}/raw-responses', [RawResponseController::class, 'show'])
-    ->middleware(['auth.api_key', 'rate.api_key'])
-    ->where('requestId', '[a-zA-Z0-9_\-:.]+');
+```sql
+SELECT r.request_id, r.model_snapshot, r.status, ru.cost_usd, r.created_at
+FROM requests r
+LEFT JOIN request_usage ru ON ru.request_id = r.request_id
+WHERE r.client_id = ?
+  AND r.created_at BETWEEN '2026-04-01' AND '2026-04-30'
+ORDER BY r.created_at DESC;
 ```
 
 ---
 
-## Контроллер
+## PII considerations
 
-Файл: `app/Http/Controllers/Api/V1/RawResponseController.php`
-
-Контроллер должен следовать паттерну `LlmRequestController`:
-- Получать `api_client` из `$request->attributes->get('api_client')`.
-- Использовать приватный метод `errorResponse()` для формирования ошибок.
-- Делегировать бизнес-логику компоненту.
-
----
-
-## Компонент
-
-Бизнес-логика размещается в существующем компоненте `ProviderGateway` или как самостоятельный query-класс, так как операция — чтение, без сложной оркестрации.
-
-Рекомендуемый подход — query-метод непосредственно в контроллере через Eloquent, т.к. логика тривиальна (lookup + tenant filter + eager load). Выносить в отдельный компонент не требуется.
-
----
-
-## Тестирование
-
-### Unit-тесты
-
-- Валидация `requestId` формата.
-- Фильтрация чувствительных заголовков.
-
-### Feature-тесты
-
-| Сценарий | Ожидаемый результат |
-|----------|---------------------|
-| Запрос без `Authorization` header | 401 |
-| Запрос с невалидным API key | 403 |
-| Запрос с валидным key, несуществующий `requestId` | 404 |
-| Запрос с валидным key, чужой `requestId` | 404 |
-| Запрос с валидным key, свой `requestId`, нет raw-ответов | 200, `data: []` |
-| Запрос с валидным key, свой `requestId`, есть raw-ответы | 200, массив raw-ответов |
-| Запрос с fallback-попытками | 200, несколько записей, `is_fallback_attempt` корректен |
-| Невалидный формат `requestId` (спецсимволы) | 404 |
-| Превышен rate limit | 429 |
-| Фильтрация sensitive headers в `response_headers` | Заголовки `authorization`, `x-api-key`, `api-key` отсутствуют в ответе |
+- `request_payload` и `response_payload` могут содержать персональные данные пользователей клиента.
+- Не копировать сырые данные в логи, тикеты или внешние системы без очистки PII.
+- При GDPR-запросе на удаление: удалить записи `request_raw` по `client_id` через JOIN с `requests`. Структурированные записи `requests` и `request_usage` не содержат PII (только токены, стоимость, метаданные).
+- Доступ к `request_raw` ограничить только инженерам с соответствующими правами.

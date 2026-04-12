@@ -1,213 +1,216 @@
-# Artisan-команды проекта
+# CLI-команды
 
 ## Управление клиентами
 
-### `llm:create-client`
+### `client:create`
 
-Создание нового API-клиента.
-
-```bash
-docker exec llm_gateway php artisan llm:create-client {name} [--rate-limit=60] [--providers=] [--no-dev-mode]
-```
-
-| Аргумент/Опция | Описание |
-|----------------|----------|
-| `name` | Имя клиента (обязательно) |
-| `--rate-limit=60` | Лимит запросов в минуту (по умолчанию 60) |
-| `--providers=` | Разрешенные провайдеры через запятую (например `claude,openai`) |
-| `--no-dev-mode` | Создать с выключенным dev_mode (по умолчанию dev_mode=true) |
-
-Выводит: имя, ID, статус dev_mode, API Key и Signing Secret.
-
----
-
-### `llm:add-callback-url`
-
-Добавление разрешенного callback URL клиенту.
+Создание нового API-клиента с ключом и signing secret.
 
 ```bash
-docker exec llm_gateway php artisan llm:add-callback-url {client_name} {url}
+php artisan client:create {name}
+    [--model-alias=]
+    [--rate-limit=]
+    [--monthly-cap=]
+    [--features=*]
 ```
 
-URL должен использовать `https://`.
-
----
-
-### `llm:rotate-key`
-
-Ротация API-ключа клиента с grace period.
-
-```bash
-docker exec llm_gateway php artisan llm:rotate-key {client_name} [--ttl=24]
-```
-
-| Опция | Описание |
-|-------|----------|
-| `--ttl=24` | Время жизни старого ключа в часах (по умолчанию 24) |
-
-Старый ключ сохраняется в `previous_key_hash` и принимается в течение TTL.
-
----
-
-### `llm:toggle-dev-mode`
-
-Переключение dev_mode клиента.
-
-```bash
-docker exec llm_gateway php artisan llm:toggle-dev-mode {client} [--enable] [--disable]
-```
-
-| Опция | Описание |
-|-------|----------|
-| `{client}` | ID или имя клиента |
-| `--enable` | Принудительно включить |
-| `--disable` | Принудительно выключить |
-
-Без флагов — переключает текущее состояние.
-
----
-
-## Управление провайдерами
-
-### `llm:provider-status`
-
-Показывает статус всех провайдеров (active/paused), причину паузы и настроенный rate limit.
-
-```bash
-docker exec llm_gateway php artisan llm:provider-status
-```
-
----
-
-### `llm:resume-provider`
-
-Возобновление работы приостановленного провайдера. Провайдер автоматически ставится на паузу при получении ошибки rate limit (HTTP 429) или нехватки средств (HTTP 402) от API провайдера. Все запросы к приостановленному провайдеру остаются в очереди и ожидают ручного возобновления.
-
-```bash
-docker exec llm_gateway php artisan llm:resume-provider {provider}
-```
-
-| Аргумент | Описание |
+| Параметр | Описание |
 |----------|----------|
-| `provider` | Имя провайдера (`claude`, `openai`, `deepseek`, `gemini`, `mistral`) или `all` для возобновления всех |
+| `name` | Имя клиента (обязательно) |
+| `--model-alias` | Дефолтный алиас модели |
+| `--rate-limit` | RPM (requests per minute) |
+| `--monthly-cap` | Месячный лимит в USD |
+| `--features` | Разрешённые фичи (через запятую) |
+
+Выводит API key (`gw_live_...`) и signing secret. Выводятся однократно.
+
+Файл: `app/Console/Commands/ClientCreate.php`
 
 ---
 
-## Мониторинг и статистика
+### `client:show`
 
-### `llm:stats`
-
-Статистика запросов.
+Просмотр информации о клиенте.
 
 ```bash
-docker exec llm_gateway php artisan llm:stats [--client=] [--from=] [--to=]
+php artisan client:show {client_id}
 ```
 
-| Опция | Описание |
-|-------|----------|
-| `--client=` | Фильтр по имени клиента |
-| `--from=` | Начало периода (Y-m-d) |
-| `--to=` | Конец периода (Y-m-d) |
-
-Выводит: общее количество запросов, количество dev_mode, разбивку по статусам и провайдерам, статистику latency, топ ошибок.
+Файл: `app/Console/Commands/ClientShow.php`
 
 ---
 
-### `llm:claude-token-budget`
+### `client:rotate-key`
 
-Показывает текущий остаток токенового бюджета Claude (данные из Redis, записанные из заголовков ответов Anthropic API).
+Ротация API-ключа клиента. Старый ключ остаётся валидным в течение grace period.
 
 ```bash
-docker exec llm_gateway php artisan llm:claude-token-budget
+php artisan client:rotate-key {client_id}
 ```
 
-Выводит таблицу:
-- **Metric** — Input/Output tokens per minute
-- **Limit** — настроенный лимит из конфига
-- **Remaining** — оставшийся бюджет
-- **Used %** — процент использования
-- **Resets At** — время сброса лимита (Y-m-d H:i:s)
-
-Дополнительно показывает статус провайдера (active/paused) и причину паузы.
-
-Если данных в кэше нет (ни одного запроса к Claude или данные истекли) — выводит предупреждение.
+Файл: `app/Console/Commands/ClientRotateKey.php`
 
 ---
 
-## Обслуживание данных
+### `client:rotate-secret`
 
-### `llm:cleanup-expired`
-
-Очистка устаревших данных. Запускается автоматически по расписанию (каждый час).
+Ротация signing secret для webhook. Grace period 24 часа -- оба секрета принимаются.
 
 ```bash
-docker exec llm_gateway php artisan llm:cleanup-expired
+php artisan client:rotate-secret {client_id}
 ```
 
-Удаляет:
-- `pending_prompts` с истекшим `expires_at`
-- `pending_responses` с истекшим `expires_at`
-- Доставленные `pending_responses` старше 1 дня
-- Помечает зависшие `accepted` запросы без pending-данных старше 3 дней как `timeout`
+Файл: `app/Console/Commands/ClientRotateSecret.php`
 
 ---
 
-### `llm:mark-timed-out`
+### `client:enable-feature`
 
-Пометка зависших запросов. Запускается автоматически каждые 5 минут.
+Включение feature для клиента.
 
 ```bash
-docker exec llm_gateway php artisan llm:mark-timed-out
+php artisan client:enable-feature {client_id} {feature}
 ```
 
-Помечает запросы в статусе `processing` дольше 30 минут как `timeout` с кодом ошибки `PROVIDER_TIMEOUT`.
+Файл: `app/Console/Commands/ClientEnableFeature.php`
 
 ---
 
-### `llm:retry-callbacks`
+### `client:disable-feature`
 
-Повторная отправка неудачных callback-ов. Запускается автоматически каждую минуту.
+Отключение feature для клиента.
 
 ```bash
-docker exec llm_gateway php artisan llm:retry-callbacks
+php artisan client:disable-feature {client_id} {feature}
 ```
 
-Находит `pending_responses` со статусом `pending` и `next_retry_at <= now()`, отправляет `DeliverCallback` job.
+Файл: `app/Console/Commands/ClientDisableFeature.php`
 
 ---
 
-## Деплой
+## Claude API
 
-### `llm:deploy-optimize`
+### `claude:status`
 
-Оптимизация для production.
+Статус подключения к Anthropic API: очереди, rate limit budget, failed jobs, streaming pool.
 
 ```bash
-docker exec llm_gateway php artisan llm:deploy-optimize
+php artisan claude:status
 ```
 
-Выполняет: `config:cache`, `route:cache`, `event:cache`, `view:cache`.
+Файл: `app/Console/Commands/ClaudeStatus.php`
+
+---
+
+### `claude:resume`
+
+Возобновление приостановленных запросов и retry неудачных webhook.
+
+```bash
+php artisan claude:resume
+```
+
+Файл: `app/Console/Commands/ClaudeResume.php`
+
+---
+
+### `claude:price-check`
+
+Проверка актуальных цен моделей.
+
+```bash
+php artisan claude:price-check
+```
+
+Файл: `app/Console/Commands/ClaudePriceCheck.php`
+
+---
+
+### `claude:sync-capabilities`
+
+Синхронизация capabilities моделей с Anthropic API (context window, max output, поддерживаемые фичи).
+
+```bash
+php artisan claude:sync-capabilities
+```
+
+Файл: `app/Console/Commands/SyncClaudeCapabilities.php`
+
+---
+
+### `claude:cleanup-files`
+
+Удаление осиротевших файлов (без владельца или с истёкшим TTL).
+
+```bash
+php artisan claude:cleanup-files
+```
+
+Файл: `app/Console/Commands/Claude/CleanupOrphanedFilesScheduled.php`
+
+---
+
+### `claude:flush-accumulator`
+
+Ручной flush batch accumulator (сброс накопленных элементов).
+
+```bash
+php artisan claude:flush-accumulator
+```
+
+Файл: `app/Console/Commands/Claude/FlushBatchAccumulatorScheduled.php`
+
+---
+
+### `claude:poll-batches`
+
+Ручной опрос статуса активных batch.
+
+```bash
+php artisan claude:poll-batches
+```
+
+Файл: `app/Console/Commands/Claude/PollBatchesScheduled.php`
+
+---
+
+## Обслуживание
+
+### `requests:cleanup`
+
+Очистка устаревших записей `request_raw` (по `retention_until`).
+
+```bash
+php artisan requests:cleanup
+```
+
+Файл: `app/Console/Commands/RequestsCleanup.php`
+
+---
+
+### `webhook:cleanup-expired-secrets`
+
+Удаление истёкших signing secrets (после grace period).
+
+```bash
+php artisan webhook:cleanup-expired-secrets
+```
+
+Файл: `app/Console/Commands/WebhookCleanupExpiredSecrets.php`
 
 ---
 
 ## Тестирование
 
-### `llm:create-test-database`
+### `llm:create-test-db`
 
-Создание тестовой БД.
+Создание тестовой БД `llm_gateway_test`.
 
 ```bash
-docker exec llm_gateway php artisan llm:create-test-database [--host=127.0.0.1] [--port=3307] [--root-password=root_secret]
+php artisan llm:create-test-db
+    [--host=127.0.0.1]
+    [--port=3307]
+    [--root-password=root_secret]
 ```
 
-Создает БД `llm_gateway_test` и выдает права пользователю `llm_user`.
-
----
-
-## Расписание (routes/console.php)
-
-| Команда | Интервал | Опции |
-|---------|----------|-------|
-| `llm:retry-callbacks` | Каждую минуту | — |
-| `llm:cleanup-expired` | Каждый час | `withoutOverlapping()`, лог в `storage/logs/cleanup.log` |
-| `llm:mark-timed-out` | Каждые 5 минут | `withoutOverlapping()` |
+Файл: `app/Console/Commands/CreateTestDatabase.php`
