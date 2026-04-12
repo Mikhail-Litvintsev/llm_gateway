@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Components\Auth\KeyHasher;
 use App\Components\Claude\Beta\BetaHeaderRegistry;
 use App\Components\Validation\MessageRequestValidator;
 use Illuminate\Support\ServiceProvider;
@@ -30,6 +31,10 @@ class AppServiceProvider extends ServiceProvider
 
             return new MessageRequestValidator($validator);
         });
+
+        $this->app->singleton(KeyHasher::class, fn () => new KeyHasher(
+            (string) config('llm.auth.api_key_pepper', '')
+        ));
     }
 
     public function boot(): void

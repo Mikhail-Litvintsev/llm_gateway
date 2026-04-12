@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 
         $middleware->alias([
+            'auth.api_key'     => \App\Components\Auth\ApiKeyAuth::class,
             'internal.network' => \App\Http\Middleware\InternalNetworkOnly::class,
         ]);
     })
