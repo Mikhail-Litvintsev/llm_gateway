@@ -1,77 +1,175 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    'version' => '3.0',
+    'version' => '4.0',
 
-    // Максимальный размер тела запроса (байт)
-    'max_payload_size' => 50 * 1024 * 1024, // 50 MB
+    'max_request_payload_mb'    => 32,
+    'max_batch_payload_mb'      => 256,
+    'max_file_size_mb'          => 500,
+    'async_request_ttl_seconds' => 3 * 24 * 3600,
+    'session_default_ttl_days'  => 30,
+    'raw_log_retention_days'    => 14,
 
-    // TTL временных данных (секунды) — 3 дня
-    'pending_ttl' => 3 * 24 * 60 * 60,
+    'claude' => [
+        'default_api_key'    => env('ANTHROPIC_API_KEY'),
+        'anthropic_version'  => '2023-06-01',
 
-    // Провайдеры
-    'providers' => [
-        'claude' => [
-            'endpoint' => env('ANTHROPIC_ENDPOINT', 'https://api.anthropic.com/v1/messages'),
-            'api_key' => env('ANTHROPIC_API_KEY'),
-            'default_model' => 'claude-sonnet-4-6',
-            'default_max_tokens' => 4096,
-            'rate_limit' => (int) env('CLAUDE_RATE_LIMIT_RPM', 45),
-            'token_limits' => [
-                'input_tokens_per_minute'  => (int) env('CLAUDE_ITPM', 30000),
-                'output_tokens_per_minute' => (int) env('CLAUDE_OTPM', 8000),
+        'endpoints' => [
+            'messages'     => 'https://api.anthropic.com/v1/messages',
+            'count_tokens' => 'https://api.anthropic.com/v1/messages/count_tokens',
+            'batches'      => 'https://api.anthropic.com/v1/messages/batches',
+            'files'        => 'https://api.anthropic.com/v1/files',
+            'models'       => 'https://api.anthropic.com/v1/models',
+        ],
+
+        'default_model_alias' => 'claude-sonnet',
+        'model_aliases' => [
+            'claude-opus'   => env('CLAUDE_OPUS_MODEL',   'claude-opus-4-6'),
+            'claude-sonnet' => env('CLAUDE_SONNET_MODEL', 'claude-sonnet-4-6'),
+            'claude-haiku'  => env('CLAUDE_HAIKU_MODEL',  'claude-haiku-4-5'),
+        ],
+
+        'model_capabilities' => [
+            'claude-opus' => [
+                'context_window'             => 1_000_000,
+                'max_output'                 => 128_000,
+                'max_output_batch'           => 300_000,
+                'supports_thinking'          => true,
+                'supports_adaptive_thinking' => true,
+                'supports_compaction'        => true,
+                'supports_prefill'           => false,
+                'min_cache_tokens'           => 4096,
+                'supports_fast_mode'         => true,
+            ],
+            'claude-sonnet' => [
+                'context_window'             => 1_000_000,
+                'max_output'                 => 64_000,
+                'max_output_batch'           => 300_000,
+                'supports_thinking'          => true,
+                'supports_adaptive_thinking' => true,
+                'supports_compaction'        => true,
+                'supports_prefill'           => true,
+                'min_cache_tokens'           => 2048,
+                'supports_fast_mode'         => false,
+            ],
+            'claude-haiku' => [
+                'context_window'             => 200_000,
+                'max_output'                 => 64_000,
+                'max_output_batch'           => 64_000,
+                'supports_thinking'          => true,
+                'supports_adaptive_thinking' => false,
+                'supports_compaction'        => false,
+                'supports_prefill'           => true,
+                'min_cache_tokens'           => 4096,
+                'supports_fast_mode'         => false,
             ],
         ],
-        'openai' => [
-            'endpoint' => env('OPENAI_ENDPOINT', 'https://api.openai.com/v1/chat/completions'),
-            'api_key' => env('OPENAI_API_KEY'),
-            'default_model' => 'gpt-4o',
-            'rate_limit' => (int) env('OPENAI_RATE_LIMIT_RPM', 60),
+
+        'pricing' => [
+            'claude-opus' => [
+                'input'          => 5.00,
+                'output'         => 25.00,
+                'cache_write_5m' => 6.25,
+                'cache_write_1h' => 10.00,
+                'cache_read'     => 0.50,
+                'batch_input'    => 2.50,
+                'batch_output'   => 12.50,
+            ],
+            'claude-sonnet' => [
+                'input'          => 3.00,
+                'output'         => 15.00,
+                'cache_write_5m' => 3.75,
+                'cache_write_1h' => 6.00,
+                'cache_read'     => 0.30,
+                'batch_input'    => 1.50,
+                'batch_output'   => 7.50,
+            ],
+            'claude-haiku' => [
+                'input'          => 1.00,
+                'output'         => 5.00,
+                'cache_write_5m' => 1.25,
+                'cache_write_1h' => 2.00,
+                'cache_read'     => 0.10,
+                'batch_input'    => 0.50,
+                'batch_output'   => 2.50,
+            ],
+            'server_tools' => [
+                'web_search_per_1k'                   => 10.00,
+                'web_fetch'                           => 0.0,
+                'code_execution_free_hours_per_month' => 1550,
+                'code_execution_per_hour'             => 0.05,
+            ],
+            'inference_geo_us_multiplier' => 1.10,
         ],
-        'deepseek' => [
-            'endpoint' => env('DEEPSEEK_ENDPOINT', 'https://api.deepseek.com/chat/completions'),
-            'api_key' => env('DEEPSEEK_API_KEY'),
-            'default_model' => 'deepseek-chat',
-            'rate_limit' => (int) env('DEEPSEEK_RATE_LIMIT_RPM', 60),
+
+        'beta_headers' => [
+            'files_api'          => 'files-api-2025-04-14',
+            'compaction'         => 'compact-2026-01-12',
+            'context_management' => 'context-management-2025-06-27',
+            'output_300k'        => 'output-300k-2026-03-24',
+            'mcp_client'         => 'mcp-client-2025-11-20',
+            'fast_mode'          => 'fast-mode-2026-02-01',
+            'computer_use'       => 'computer-use-2025-01-24',
+            'skills'             => 'skills-2025-10-02',
         ],
-        'gemini' => [
-            'endpoint' => env('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta/models'),
-            'api_key' => env('GEMINI_API_KEY'),
-            'default_model' => 'gemini-2.0-flash',
-            'rate_limit' => (int) env('GEMINI_RATE_LIMIT_RPM', 60),
+
+        'rate_limit' => [
+            'enforce_locally'   => true,
+            'safety_margin_pct' => 10,
         ],
-        'mistral' => [
-            'endpoint' => env('MISTRAL_ENDPOINT', 'https://api.mistral.ai/v1/chat/completions'),
-            'api_key' => env('MISTRAL_API_KEY'),
-            'default_model' => 'mistral-large-latest',
-            'rate_limit' => (int) env('MISTRAL_RATE_LIMIT_RPM', 60),
+
+        'caching' => [
+            'auto_top_level_default'           => true,
+            'min_prefix_safety_margin_tokens'  => 100,
+            'default_ttl'                      => '5m',
+        ],
+
+        'batch' => [
+            'enabled'                     => true,
+            'max_wait_seconds'            => 24 * 3600,
+            'auto_use_1h_cache_for_batch' => true,
+        ],
+
+        'thinking' => [
+            'default_effort' => 'medium',
+        ],
+
+        'service_tier' => [
+            'default' => 'standard_only',
+        ],
+
+        'timeouts' => [
+            'connect'   => 10,
+            'request'   => 600,
+            'streaming' => 1800,
         ],
     ],
 
-    // Очереди по приоритету
     'queues' => [
-        'high' => 'high',
+        'high'   => 'high',
         'normal' => 'default',
-        'low' => 'low',
+        'low'    => 'low',
+        'batch'  => 'batch',
     ],
 
-    // Dev mode stub settings
     'dev_mode' => [
-        'latency_ms' => (int) env('DEV_MODE_LATENCY_MS', 150),
-        'content' => env('DEV_MODE_CONTENT', 'This is a dev_mode stub response.'),
-        'finish_reason' => 'end_turn',
-        'input_tokens' => 10,
-        'output_tokens' => 5,
-        'model' => 'dev-mode-stub',
-        'provider' => 'stub',
+        'latency_ms'              => (int) env('DEV_MODE_LATENCY_MS', 150),
+        'content'                 => env('DEV_MODE_CONTENT', 'This is a dev_mode stub response.'),
+        'simulate_cache_hit_rate' => 0.5,
     ],
 
-    // Callback
-    'callback' => [
-        'default_timeout' => 300,
-        'default_max_attempts' => 3,
-        'default_backoff' => 'exponential',
-        'default_initial_delay' => 1,
-        'max_response_wait' => 10,
+    'webhook' => [
+        'default_max_attempts'      => 10,
+        'backoff'                   => 'exponential',
+        'initial_delay_seconds'     => 10,
+        'max_delay_seconds'         => 3600,
+        'request_timeout_seconds'   => 30,
+        'signing_algorithm'         => 'sha256',
+    ],
+
+    'auth' => [
+        'api_key_pepper' => env('API_KEY_PEPPER'),
     ],
 ];
