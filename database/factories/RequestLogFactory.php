@@ -14,7 +14,7 @@ class RequestLogFactory extends Factory
     public function definition(): array
     {
         return [
-            'request_id' => 'req_' . $this->faker->unique()->lexify('??????'),
+            'request_id' => 'req_'.$this->faker->unique()->lexify('??????'),
             'api_client_id' => ApiClient::factory(),
             'status' => RequestStatus::Accepted,
             'callback_url' => 'https://example.com/callback',

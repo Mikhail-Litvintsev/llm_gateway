@@ -3,6 +3,7 @@
 namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Monolog\Handler\NullHandler;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -32,7 +33,7 @@ abstract class TestCase extends BaseTestCase
         }
 
         // Redirect the llm log channel to null in tests to avoid file permission issues
-        config(['logging.channels.llm.driver' => 'monolog', 'logging.channels.llm.handler' => \Monolog\Handler\NullHandler::class]);
+        config(['logging.channels.llm.driver' => 'monolog', 'logging.channels.llm.handler' => NullHandler::class]);
     }
 
     private function forceEnv(string $name, string $value): void

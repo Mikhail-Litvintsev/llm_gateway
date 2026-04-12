@@ -31,7 +31,7 @@ final class ClaudeRateLimitTracker
             return;
         }
 
-        $now = new DateTimeImmutable();
+        $now = new DateTimeImmutable;
 
         $this->checkAxis(
             'requests',
@@ -67,11 +67,11 @@ final class ClaudeRateLimitTracker
     ): void {
         $headers = $this->normalizeHeaders($responseHeaders);
 
-        if (!isset($headers['anthropic-ratelimit-requests-limit'])) {
+        if (! isset($headers['anthropic-ratelimit-requests-limit'])) {
             return;
         }
 
-        $now = new DateTimeImmutable();
+        $now = new DateTimeImmutable;
 
         $snapshot = new RateLimitSnapshot(
             requestsLimit: (int) $headers['anthropic-ratelimit-requests-limit'],
@@ -160,25 +160,26 @@ final class ClaudeRateLimitTracker
         foreach ($headers as $key => $value) {
             $normalized[strtolower((string) $key)] = is_array($value) ? $value[0] : (string) $value;
         }
+
         return $normalized;
     }
 
     private function snapshotToArray(RateLimitSnapshot $snapshot): array
     {
         return [
-            'requests_limit'          => $snapshot->requestsLimit,
-            'requests_remaining'      => $snapshot->requestsRemaining,
-            'requests_reset_at'       => $snapshot->requestsResetAt->format('c'),
-            'tokens_limit'            => $snapshot->tokensLimit,
-            'tokens_remaining'        => $snapshot->tokensRemaining,
-            'tokens_reset_at'         => $snapshot->tokensResetAt->format('c'),
-            'input_tokens_limit'      => $snapshot->inputTokensLimit,
-            'input_tokens_remaining'  => $snapshot->inputTokensRemaining,
-            'input_tokens_reset_at'   => $snapshot->inputTokensResetAt->format('c'),
-            'output_tokens_limit'     => $snapshot->outputTokensLimit,
+            'requests_limit' => $snapshot->requestsLimit,
+            'requests_remaining' => $snapshot->requestsRemaining,
+            'requests_reset_at' => $snapshot->requestsResetAt->format('c'),
+            'tokens_limit' => $snapshot->tokensLimit,
+            'tokens_remaining' => $snapshot->tokensRemaining,
+            'tokens_reset_at' => $snapshot->tokensResetAt->format('c'),
+            'input_tokens_limit' => $snapshot->inputTokensLimit,
+            'input_tokens_remaining' => $snapshot->inputTokensRemaining,
+            'input_tokens_reset_at' => $snapshot->inputTokensResetAt->format('c'),
+            'output_tokens_limit' => $snapshot->outputTokensLimit,
             'output_tokens_remaining' => $snapshot->outputTokensRemaining,
-            'output_tokens_reset_at'  => $snapshot->outputTokensResetAt->format('c'),
-            'recorded_at'             => $snapshot->recordedAt->format('c'),
+            'output_tokens_reset_at' => $snapshot->outputTokensResetAt->format('c'),
+            'recorded_at' => $snapshot->recordedAt->format('c'),
         ];
     }
 }

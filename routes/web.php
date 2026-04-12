@@ -7,4 +7,3 @@ Route::prefix('internal')->middleware('internal.network')->group(function () {
     Route::get('/health', [MonitoringController::class, 'health']);
     Route::get('/stats', [MonitoringController::class, 'stats']);
 });
-

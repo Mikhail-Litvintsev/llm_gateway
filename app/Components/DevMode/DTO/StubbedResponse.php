@@ -9,8 +9,8 @@ use App\Components\Claude\DTO\UsageData;
 final readonly class StubbedResponse
 {
     public function __construct(
-        public array     $anthropicBody,
-        public array     $anthropicHeaders,
+        public array $anthropicBody,
+        public array $anthropicHeaders,
         public UsageData $usage,
     ) {}
 }

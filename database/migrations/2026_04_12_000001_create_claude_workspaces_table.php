@@ -26,20 +26,21 @@ return new class extends Migration
 
         if ($apiKey === '') {
             if (app()->environment('production')) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     'ANTHROPIC_API_KEY is empty in production. Set it in .env before running migrations '
-                    . 'or default workspace will be unusable.'
+                    .'or default workspace will be unusable.'
                 );
             }
+
             return;
         }
 
         DB::table('claude_workspaces')->insertOrIgnore([
-            'name'              => 'default',
+            'name' => 'default',
             'api_key_encrypted' => Crypt::encryptString($apiKey),
-            'is_active'         => true,
-            'created_at'        => now(),
-            'updated_at'        => now(),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 

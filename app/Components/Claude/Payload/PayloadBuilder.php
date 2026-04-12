@@ -12,8 +12,8 @@ final class PayloadBuilder
     public function buildMessagesPayload(MessageRequest $request, string $modelSnapshot): array
     {
         return [
-            'model'      => $modelSnapshot,
-            'messages'   => $request->messages,
+            'model' => $modelSnapshot,
+            'messages' => $request->messages,
             'max_tokens' => $request->maxTokens,
         ];
     }

@@ -9,7 +9,7 @@ final readonly class ModelInfo
     public function __construct(
         public string $id,
         public string $displayName,
-        public int    $contextWindow,
-        public int    $maxOutput,
+        public int $contextWindow,
+        public int $maxOutput,
     ) {}
 }

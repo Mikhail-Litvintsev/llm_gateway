@@ -10,7 +10,7 @@ final readonly class ClaudeFile
         public string $anthropicFileId,
         public string $filename,
         public string $mimeType,
-        public int    $sizeBytes,
+        public int $sizeBytes,
         public string $purpose,
     ) {}
 }

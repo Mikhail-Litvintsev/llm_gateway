@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Components\DevMode;
 
 use App\Components\Claude\DTO\MessageRequest;
+use App\Components\Claude\DTO\StreamEvent;
 use App\Components\DevMode\DTO\StubbedResponse;
 use App\Models\Client;
 use Generator;
@@ -20,7 +21,7 @@ final class DevMode
         return $this->stubber->buildMessageResponse($request, $client);
     }
 
-    /** @return Generator<\App\Components\Claude\DTO\StreamEvent> */
+    /** @return Generator<StreamEvent> */
     public function stubStream(MessageRequest $request, Client $client): Generator
     {
         return $this->stubber->buildStreamEvents($request, $client);

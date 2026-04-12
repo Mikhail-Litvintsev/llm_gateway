@@ -13,8 +13,8 @@ class ApiClientFactory extends Factory
 
     public function definition(): array
     {
-        $generator = new KeyGenerator();
-        $hasher = new KeyHasher();
+        $generator = new KeyGenerator;
+        $hasher = new KeyHasher;
         $apiKey = $generator->generate();
 
         return [
@@ -41,7 +41,7 @@ class ApiClientFactory extends Factory
 
     public function withKnownKey(string $apiKey): static
     {
-        $hasher = new KeyHasher();
+        $hasher = new KeyHasher;
 
         return $this->state([
             'api_key_hash' => $hasher->hash($apiKey),

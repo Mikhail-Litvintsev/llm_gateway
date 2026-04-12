@@ -8,6 +8,6 @@ final readonly class StreamEvent
 {
     public function __construct(
         public string $type,
-        public array  $data,
+        public array $data,
     ) {}
 }

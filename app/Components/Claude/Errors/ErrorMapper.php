@@ -29,13 +29,13 @@ final class ErrorMapper
         $type = $event['error']['type'] ?? 'unknown';
 
         return match ($type) {
-            'overloaded_error'      => 'overloaded',
-            'api_error'             => 'upstream_error',
+            'overloaded_error' => 'overloaded',
+            'api_error' => 'upstream_error',
             'invalid_request_error' => 'invalid_request',
-            'authentication_error'  => 'authentication_error',
-            'permission_error'      => 'permission_error',
-            'rate_limit_error'      => 'rate_limit',
-            default                 => 'unknown',
+            'authentication_error' => 'authentication_error',
+            'permission_error' => 'permission_error',
+            'rate_limit_error' => 'rate_limit',
+            default => 'unknown',
         };
     }
 }

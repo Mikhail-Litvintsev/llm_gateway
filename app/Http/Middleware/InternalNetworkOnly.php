@@ -21,7 +21,7 @@ class InternalNetworkOnly
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$this->isAllowed($request->ip())) {
+        if (! $this->isAllowed($request->ip())) {
             abort(403, 'Access denied');
         }
 

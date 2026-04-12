@@ -10,7 +10,7 @@ final class KeyGenerator
 
     public function generateRawKey(): string
     {
-        return 'gw_live_' . $this->randomBase62(32);
+        return 'gw_live_'.$this->randomBase62(32);
     }
 
     public function derivePrefix(string $rawKey): string

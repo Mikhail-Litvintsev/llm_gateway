@@ -14,55 +14,55 @@ final class MessageRequestValidator
 {
     private const RULES_PER_CONTEXT = [
         'sync' => [
-            'require_stream'          => false,
-            'forbid_stream'           => false,
-            'use_max_output_batch'    => false,
+            'require_stream' => false,
+            'forbid_stream' => false,
+            'use_max_output_batch' => false,
             'allow_service_tier_auto' => true,
-            'allow_fast_mode'         => true,
-            'require_callback_url'    => false,
+            'allow_fast_mode' => true,
+            'require_callback_url' => false,
         ],
         'sync_stream' => [
-            'require_stream'          => true,
-            'forbid_stream'           => false,
-            'use_max_output_batch'    => false,
+            'require_stream' => true,
+            'forbid_stream' => false,
+            'use_max_output_batch' => false,
             'allow_service_tier_auto' => true,
-            'allow_fast_mode'         => true,
-            'require_callback_url'    => false,
+            'allow_fast_mode' => true,
+            'require_callback_url' => false,
         ],
         'async_callback' => [
-            'require_stream'          => false,
-            'forbid_stream'           => false,
-            'use_max_output_batch'    => false,
+            'require_stream' => false,
+            'forbid_stream' => false,
+            'use_max_output_batch' => false,
             'allow_service_tier_auto' => true,
-            'allow_fast_mode'         => true,
-            'require_callback_url'    => true,
+            'allow_fast_mode' => true,
+            'require_callback_url' => true,
         ],
         'batch_item' => [
-            'require_stream'          => false,
-            'forbid_stream'           => true,
-            'use_max_output_batch'    => true,
+            'require_stream' => false,
+            'forbid_stream' => true,
+            'use_max_output_batch' => true,
             'allow_service_tier_auto' => false,
-            'allow_fast_mode'         => false,
-            'require_callback_url'    => false,
+            'allow_fast_mode' => false,
+            'require_callback_url' => false,
         ],
         'session' => [
-            'require_stream'          => false,
-            'forbid_stream'           => false,
-            'use_max_output_batch'    => false,
+            'require_stream' => false,
+            'forbid_stream' => false,
+            'use_max_output_batch' => false,
             'allow_service_tier_auto' => true,
-            'allow_fast_mode'         => true,
-            'require_callback_url'    => false,
-            'override_from_session'   => ['model_alias', 'system', 'tools'],
+            'allow_fast_mode' => true,
+            'require_callback_url' => false,
+            'override_from_session' => ['model_alias', 'system', 'tools'],
         ],
         'count_tokens' => [
-            'require_stream'          => false,
-            'forbid_stream'           => true,
-            'use_max_output_batch'    => false,
+            'require_stream' => false,
+            'forbid_stream' => true,
+            'use_max_output_batch' => false,
             'allow_service_tier_auto' => true,
-            'allow_fast_mode'         => false,
-            'require_callback_url'    => false,
-            'skip_rate_limit_check'   => true,
-            'skip_spend_cap_check'    => true,
+            'allow_fast_mode' => false,
+            'require_callback_url' => false,
+            'skip_rate_limit_check' => true,
+            'skip_spend_cap_check' => true,
         ],
     ];
 
@@ -89,18 +89,20 @@ final class MessageRequestValidator
 
     private function preCheck(array $payload, array &$errors): void
     {
-        if (!isset($payload['messages'])) {
+        if (! isset($payload['messages'])) {
             $errors[] = new ValidationError('/', 'messages_required', 'Field "messages" is required');
+
             return;
         }
 
-        if (!isset($payload['model'])) {
+        if (! isset($payload['model'])) {
             $errors[] = new ValidationError('/', 'model_required', 'Field "model" is required');
+
             return;
         }
 
         $aliases = config('llm.claude.model_aliases', []);
-        if (!isset($aliases[$payload['model']])) {
+        if (! isset($aliases[$payload['model']])) {
             $errors[] = new ValidationError('/model', 'unknown_model_alias', "Unknown model alias: {$payload['model']}");
         }
     }
@@ -114,8 +116,8 @@ final class MessageRequestValidator
         $data = json_decode(json_encode($payload, JSON_THROW_ON_ERROR), false, 512, JSON_THROW_ON_ERROR);
         $result = $this->schemaValidator->validate($data, $schemaUri);
 
-        if (!$result->isValid()) {
-            $formatter = new ErrorFormatter();
+        if (! $result->isValid()) {
+            $formatter = new ErrorFormatter;
             $formatted = $formatter->format($result->error());
 
             foreach ($formatted as $path => $messages) {
@@ -131,7 +133,7 @@ final class MessageRequestValidator
         $rules = self::RULES_PER_CONTEXT[$ctx->value] ?? [];
 
         if (($rules['forbid_stream'] ?? false) && ($payload['stream'] ?? false) === true) {
-            $errors[] = new ValidationError('/stream', 'stream_forbidden_in_' . $ctx->value, "Streaming is not allowed in {$ctx->value} context");
+            $errors[] = new ValidationError('/stream', 'stream_forbidden_in_'.$ctx->value, "Streaming is not allowed in {$ctx->value} context");
         }
 
         if (($rules['require_stream'] ?? false) && ($payload['stream'] ?? false) !== true) {
@@ -189,7 +191,7 @@ final class MessageRequestValidator
             }
 
             $prevContent = $prev['content'] ?? [];
-            if (!is_array($prevContent)) {
+            if (! is_array($prevContent)) {
                 continue;
             }
 
@@ -201,13 +203,14 @@ final class MessageRequestValidator
                 }
             }
 
-            if (!$hasPtcToolUse) {
+            if (! $hasPtcToolUse) {
                 continue;
             }
 
             $currContent = $curr['content'] ?? [];
-            if (!is_array($currContent)) {
+            if (! is_array($currContent)) {
                 $errors[] = new ValidationError("/messages/{$i}/content", 'ptc_user_message_must_be_tool_results_only', 'User message following tool_use must contain only tool_result blocks');
+
                 continue;
             }
 

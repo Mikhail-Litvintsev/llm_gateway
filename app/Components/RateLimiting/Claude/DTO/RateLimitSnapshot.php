@@ -9,17 +9,17 @@ use DateTimeImmutable;
 final readonly class RateLimitSnapshot
 {
     public function __construct(
-        public int               $requestsLimit,
-        public int               $requestsRemaining,
+        public int $requestsLimit,
+        public int $requestsRemaining,
         public DateTimeImmutable $requestsResetAt,
-        public int               $tokensLimit,
-        public int               $tokensRemaining,
+        public int $tokensLimit,
+        public int $tokensRemaining,
         public DateTimeImmutable $tokensResetAt,
-        public int               $inputTokensLimit,
-        public int               $inputTokensRemaining,
+        public int $inputTokensLimit,
+        public int $inputTokensRemaining,
         public DateTimeImmutable $inputTokensResetAt,
-        public int               $outputTokensLimit,
-        public int               $outputTokensRemaining,
+        public int $outputTokensLimit,
+        public int $outputTokensRemaining,
         public DateTimeImmutable $outputTokensResetAt,
         public DateTimeImmutable $recordedAt,
     ) {}

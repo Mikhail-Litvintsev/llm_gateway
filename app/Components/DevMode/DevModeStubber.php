@@ -15,7 +15,9 @@ use Illuminate\Support\Str;
 final class DevModeStubber
 {
     private readonly string $stubContent;
+
     private readonly int $latencyMs;
+
     private readonly float $cacheHitRate;
 
     public function __construct()
@@ -27,7 +29,7 @@ final class DevModeStubber
 
     public function buildMessageResponse(MessageRequest $request, Client $client): StubbedResponse
     {
-        $stubId = 'msg_stub_' . Str::random(24);
+        $stubId = 'msg_stub_'.Str::random(24);
         $contentBlocks = $this->buildContentBlocks($request);
         $inputTokens = (int) ceil(strlen(json_encode($request->messages)) / 4);
         $outputTokens = (int) ceil(strlen($this->stubContent) / 4);
@@ -78,7 +80,7 @@ final class DevModeStubber
     /** @return Generator<StreamEvent> */
     public function buildStreamEvents(MessageRequest $request, Client $client): Generator
     {
-        $stubId = 'msg_stub_' . Str::random(24);
+        $stubId = 'msg_stub_'.Str::random(24);
         $model = config("llm.claude.model_aliases.{$request->modelAlias}", $request->modelAlias);
         $words = explode(' ', $this->stubContent);
         $chunks = array_chunk($words, max(1, (int) ceil(count($words) / 5)));
@@ -113,7 +115,7 @@ final class DevModeStubber
             yield new StreamEvent('content_block_delta', [
                 'type' => 'content_block_delta',
                 'index' => 0,
-                'delta' => ['type' => 'text_delta', 'text' => implode(' ', $chunk) . ' '],
+                'delta' => ['type' => 'text_delta', 'text' => implode(' ', $chunk).' '],
             ]);
         }
 
@@ -141,7 +143,7 @@ final class DevModeStubber
             $blocks[] = [
                 'type' => 'thinking',
                 'thinking' => 'Analyzing the request in dev mode...',
-                'signature' => 'sig_stub_' . bin2hex(random_bytes(16)),
+                'signature' => 'sig_stub_'.bin2hex(random_bytes(16)),
             ];
         }
 
@@ -158,7 +160,7 @@ final class DevModeStubber
         if ($hasWebSearch) {
             $blocks[] = [
                 'type' => 'server_tool_use',
-                'id' => 'srvtoolu_stub_' . Str::random(12),
+                'id' => 'srvtoolu_stub_'.Str::random(12),
                 'name' => 'web_search_20250305',
                 'input' => ['query' => 'dev mode stub query'],
             ];
@@ -176,11 +178,11 @@ final class DevModeStubber
             'text' => $this->stubContent,
         ];
 
-        if ($request->tools !== null && !$hasWebSearch) {
+        if ($request->tools !== null && ! $hasWebSearch) {
             $firstTool = $request->tools[0];
             $blocks[] = [
                 'type' => 'tool_use',
-                'id' => 'toolu_stub_' . Str::random(12),
+                'id' => 'toolu_stub_'.Str::random(12),
                 'name' => $firstTool['name'] ?? 'unknown_tool',
                 'input' => (object) [],
             ];
@@ -191,7 +193,7 @@ final class DevModeStubber
 
     private function shouldSimulateCacheHit(MessageRequest $request): bool
     {
-        $hash = crc32($request->modelAlias . json_encode($request->messages));
+        $hash = crc32($request->modelAlias.json_encode($request->messages));
 
         return (abs($hash) % 100) < ($this->cacheHitRate * 100);
     }

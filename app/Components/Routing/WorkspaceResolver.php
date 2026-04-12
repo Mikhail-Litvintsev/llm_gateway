@@ -14,7 +14,7 @@ final class WorkspaceResolver
     {
         $workspace = $client->workspace;
 
-        if (!$workspace || !$workspace->is_active) {
+        if (! $workspace || ! $workspace->is_active) {
             throw new WorkspaceNotConfiguredException($client->workspace_id);
         }
 

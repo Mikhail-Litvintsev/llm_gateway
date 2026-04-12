@@ -24,7 +24,7 @@ final class KeyHasher
 
     public function hash(string $rawKey): string
     {
-        return hash('sha256', $rawKey . $this->pepper, binary: true);
+        return hash('sha256', $rawKey.$this->pepper, binary: true);
     }
 
     public function verify(string $rawKey, string $storedHash): bool

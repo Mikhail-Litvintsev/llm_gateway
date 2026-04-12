@@ -9,7 +9,7 @@ final readonly class ResolvedModel
     public function __construct(
         public string $alias,
         public string $snapshot,
-        public array  $capabilities,
-        public array  $pricing,
+        public array $capabilities,
+        public array $pricing,
     ) {}
 }

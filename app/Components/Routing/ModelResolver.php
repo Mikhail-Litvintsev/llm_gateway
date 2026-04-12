@@ -18,7 +18,7 @@ final class ModelResolver
         return Cache::remember($cacheKey, 3600, function () use ($alias): ResolvedModel {
             $aliases = config('llm.claude.model_aliases');
 
-            if (!isset($aliases[$alias])) {
+            if (! isset($aliases[$alias])) {
                 throw new UnknownModelAliasException($alias);
             }
 

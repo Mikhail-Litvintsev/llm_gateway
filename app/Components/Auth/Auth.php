@@ -50,7 +50,7 @@ final class Auth
 
         $rawKey = substr($bearerToken, 7);
 
-        if (!str_starts_with($rawKey, 'gw_live_')) {
+        if (! str_starts_with($rawKey, 'gw_live_')) {
             throw new AuthenticationException('Unknown key format');
         }
 

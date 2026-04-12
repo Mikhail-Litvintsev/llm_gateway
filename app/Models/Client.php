@@ -17,13 +17,13 @@ class Client extends Model
     protected function casts(): array
     {
         return [
-            'allowed_features'          => 'array',
-            'is_dev_mode'               => 'boolean',
-            'monthly_spend_cap_usd'     => 'decimal:2',
-            'current_month_spend_usd'   => 'decimal:4',
+            'allowed_features' => 'array',
+            'is_dev_mode' => 'boolean',
+            'monthly_spend_cap_usd' => 'decimal:2',
+            'current_month_spend_usd' => 'decimal:4',
             'signing_secret_rotated_at' => 'datetime',
-            'deleted_at'                => 'datetime',
-            'api_key_hash'              => 'string',
+            'deleted_at' => 'datetime',
+            'api_key_hash' => 'string',
         ];
     }
 
