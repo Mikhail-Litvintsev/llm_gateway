@@ -1,0 +1,17 @@
+{
+  "$comment": "Phase 1 scope — batch item wrapper.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:gateway:batch_item",
+  "type": "object",
+  "required": ["custom_id", "params"],
+  "properties": {
+    "custom_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+    },
+    "params": {
+      "$ref": "urn:gateway:message_request"
+    }
+  },
+  "additionalProperties": false
+}
