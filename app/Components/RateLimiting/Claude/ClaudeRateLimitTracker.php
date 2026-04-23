@@ -19,13 +19,14 @@ final class ClaudeRateLimitTracker
     }
 
     public function canProceed(
+        RateLimitNamespace $ns,
         string $workspaceKeyHash,
         string $modelSnapshot,
         int $estimatedInputTokens,
         int $estimatedOutputTokens,
         int $expectedCacheReadTokens,
     ): void {
-        $snapshot = $this->snapshot($workspaceKeyHash, $modelSnapshot);
+        $snapshot = $this->snapshot($ns, $workspaceKeyHash, $modelSnapshot);
 
         if ($snapshot === null) {
             return;
@@ -41,33 +42,42 @@ final class ClaudeRateLimitTracker
             $now,
         );
 
-        $effectiveInput = max(0, $estimatedInputTokens - $expectedCacheReadTokens);
+        if ($ns === RateLimitNamespace::Messages) {
+            $effectiveInput = max(0, $estimatedInputTokens - $expectedCacheReadTokens);
 
-        $this->checkAxis(
-            'input_tokens',
-            $snapshot->inputTokensRemaining,
-            $effectiveInput,
-            $snapshot->inputTokensResetAt,
-            $now,
-        );
+            $this->checkAxis(
+                'input_tokens',
+                $snapshot->inputTokensRemaining,
+                $effectiveInput,
+                $snapshot->inputTokensResetAt,
+                $now,
+            );
 
-        $this->checkAxis(
-            'output_tokens',
-            $snapshot->outputTokensRemaining,
-            $estimatedOutputTokens,
-            $snapshot->outputTokensResetAt,
-            $now,
-        );
+            $this->checkAxis(
+                'output_tokens',
+                $snapshot->outputTokensRemaining,
+                $estimatedOutputTokens,
+                $snapshot->outputTokensResetAt,
+                $now,
+            );
+        }
     }
 
     public function recordFromHeaders(
+        RateLimitNamespace $ns,
         string $workspaceKeyHash,
         string $modelSnapshot,
         array $responseHeaders,
     ): void {
         $headers = $this->normalizeHeaders($responseHeaders);
 
-        if (! isset($headers['anthropic-ratelimit-requests-limit'])) {
+        if ($ns === RateLimitNamespace::BatchCreate) {
+            $this->recordBatchHeaders($workspaceKeyHash, $modelSnapshot, $headers);
+
+            return;
+        }
+
+        if (!isset($headers['anthropic-ratelimit-requests-limit'])) {
             return;
         }
 
@@ -97,14 +107,22 @@ final class ClaudeRateLimitTracker
         );
 
         $ttl = max(1, $maxReset - $now->getTimestamp() + 5);
-        $key = $this->redisKey($workspaceKeyHash, $modelSnapshot);
+        $key = $this->redisKey($ns, $workspaceKeyHash, $modelSnapshot);
 
         Redis::setex($key, $ttl, json_encode($this->snapshotToArray($snapshot), JSON_THROW_ON_ERROR));
+
+        if (isset($headers['anthropic-priority-ratelimit-requests-limit'])) {
+            $this->recordPriorityHeaders($workspaceKeyHash, $modelSnapshot, $headers);
+        }
+
+        if (isset($headers['anthropic-fast-ratelimit-requests-limit'])) {
+            $this->recordPrefixedHeaders(RateLimitNamespace::Fast, 'anthropic-fast-ratelimit-', $workspaceKeyHash, $modelSnapshot, $headers);
+        }
     }
 
-    public function snapshot(string $workspaceKeyHash, string $modelSnapshot): ?RateLimitSnapshot
+    public function snapshot(RateLimitNamespace $ns, string $workspaceKeyHash, string $modelSnapshot): ?RateLimitSnapshot
     {
-        $key = $this->redisKey($workspaceKeyHash, $modelSnapshot);
+        $key = $this->redisKey($ns, $workspaceKeyHash, $modelSnapshot);
         $raw = Redis::get($key);
 
         if ($raw === null) {
@@ -117,17 +135,90 @@ final class ClaudeRateLimitTracker
             requestsLimit: $data['requests_limit'],
             requestsRemaining: $data['requests_remaining'],
             requestsResetAt: new DateTimeImmutable($data['requests_reset_at']),
-            tokensLimit: $data['tokens_limit'],
-            tokensRemaining: $data['tokens_remaining'],
-            tokensResetAt: new DateTimeImmutable($data['tokens_reset_at']),
-            inputTokensLimit: $data['input_tokens_limit'],
-            inputTokensRemaining: $data['input_tokens_remaining'],
-            inputTokensResetAt: new DateTimeImmutable($data['input_tokens_reset_at']),
-            outputTokensLimit: $data['output_tokens_limit'],
-            outputTokensRemaining: $data['output_tokens_remaining'],
-            outputTokensResetAt: new DateTimeImmutable($data['output_tokens_reset_at']),
+            tokensLimit: $data['tokens_limit'] ?? 0,
+            tokensRemaining: $data['tokens_remaining'] ?? 0,
+            tokensResetAt: new DateTimeImmutable($data['tokens_reset_at'] ?? 'now'),
+            inputTokensLimit: $data['input_tokens_limit'] ?? 0,
+            inputTokensRemaining: $data['input_tokens_remaining'] ?? 0,
+            inputTokensResetAt: new DateTimeImmutable($data['input_tokens_reset_at'] ?? 'now'),
+            outputTokensLimit: $data['output_tokens_limit'] ?? 0,
+            outputTokensRemaining: $data['output_tokens_remaining'] ?? 0,
+            outputTokensResetAt: new DateTimeImmutable($data['output_tokens_reset_at'] ?? 'now'),
             recordedAt: new DateTimeImmutable($data['recorded_at']),
         );
+    }
+
+    private function recordPriorityHeaders(string $workspaceKeyHash, string $modelSnapshot, array $headers): void
+    {
+        $this->recordPrefixedHeaders(RateLimitNamespace::Priority, 'anthropic-priority-ratelimit-', $workspaceKeyHash, $modelSnapshot, $headers);
+    }
+
+    private function recordPrefixedHeaders(
+        RateLimitNamespace $ns,
+        string $prefix,
+        string $workspaceKeyHash,
+        string $modelSnapshot,
+        array $headers,
+    ): void {
+        $now = new DateTimeImmutable;
+
+        $snapshot = new RateLimitSnapshot(
+            requestsLimit: (int) ($headers[$prefix . 'requests-limit'] ?? 0),
+            requestsRemaining: (int) ($headers[$prefix . 'requests-remaining'] ?? 0),
+            requestsResetAt: new DateTimeImmutable($headers[$prefix . 'requests-reset'] ?? 'now'),
+            tokensLimit: (int) ($headers[$prefix . 'tokens-limit'] ?? 0),
+            tokensRemaining: (int) ($headers[$prefix . 'tokens-remaining'] ?? 0),
+            tokensResetAt: new DateTimeImmutable($headers[$prefix . 'tokens-reset'] ?? 'now'),
+            inputTokensLimit: (int) ($headers[$prefix . 'input-tokens-limit'] ?? 0),
+            inputTokensRemaining: (int) ($headers[$prefix . 'input-tokens-remaining'] ?? 0),
+            inputTokensResetAt: new DateTimeImmutable($headers[$prefix . 'input-tokens-reset'] ?? 'now'),
+            outputTokensLimit: (int) ($headers[$prefix . 'output-tokens-limit'] ?? 0),
+            outputTokensRemaining: (int) ($headers[$prefix . 'output-tokens-remaining'] ?? 0),
+            outputTokensResetAt: new DateTimeImmutable($headers[$prefix . 'output-tokens-reset'] ?? 'now'),
+            recordedAt: $now,
+        );
+
+        $maxReset = max(
+            $snapshot->requestsResetAt->getTimestamp(),
+            $snapshot->inputTokensResetAt->getTimestamp(),
+            $snapshot->outputTokensResetAt->getTimestamp(),
+        );
+
+        $ttl = max(1, $maxReset - $now->getTimestamp() + 5);
+        $key = $this->redisKey($ns, $workspaceKeyHash, $modelSnapshot);
+
+        Redis::setex($key, $ttl, json_encode($this->snapshotToArray($snapshot), JSON_THROW_ON_ERROR));
+    }
+
+    private function recordBatchHeaders(string $workspaceKeyHash, string $modelSnapshot, array $headers): void
+    {
+        if (!isset($headers['anthropic-ratelimit-batches-remaining'])) {
+            return;
+        }
+
+        $now = new DateTimeImmutable;
+        $resetAt = new DateTimeImmutable($headers['anthropic-ratelimit-batches-reset'] ?? 'now');
+
+        $snapshot = new RateLimitSnapshot(
+            requestsLimit: (int) ($headers['anthropic-ratelimit-batches-limit'] ?? 0),
+            requestsRemaining: (int) $headers['anthropic-ratelimit-batches-remaining'],
+            requestsResetAt: $resetAt,
+            tokensLimit: 0,
+            tokensRemaining: 0,
+            tokensResetAt: $now,
+            inputTokensLimit: 0,
+            inputTokensRemaining: 0,
+            inputTokensResetAt: $now,
+            outputTokensLimit: 0,
+            outputTokensRemaining: 0,
+            outputTokensResetAt: $now,
+            recordedAt: $now,
+        );
+
+        $ttl = max(1, $resetAt->getTimestamp() - $now->getTimestamp() + 5);
+        $key = $this->redisKey(RateLimitNamespace::BatchCreate, $workspaceKeyHash, $modelSnapshot);
+
+        Redis::setex($key, $ttl, json_encode($this->snapshotToArray($snapshot), JSON_THROW_ON_ERROR));
     }
 
     private function checkAxis(
@@ -149,9 +240,9 @@ final class ClaudeRateLimitTracker
         }
     }
 
-    private function redisKey(string $workspaceKeyHash, string $modelSnapshot): string
+    private function redisKey(RateLimitNamespace $ns, string $workspaceKeyHash, string $modelSnapshot): string
     {
-        return "claude_rl:{$workspaceKeyHash}:{$modelSnapshot}";
+        return "claude_rl:{$ns->value}:{$workspaceKeyHash}:{$modelSnapshot}";
     }
 
     private function normalizeHeaders(array $headers): array

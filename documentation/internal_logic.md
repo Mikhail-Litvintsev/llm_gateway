@@ -751,7 +751,7 @@ X-Gateway-Model-Snapshot: {modelSnapshot}
 
 - **FilesUploadHandler** -- загрузка файлов через Anthropic Files API (`POST /v1/files`). Валидация через `FileUploadValidator`.
 - **FilesDeletionHandler** -- soft delete + DELETE в Anthropic.
-- **FilesRepository** -- Eloquent-запросы к `file_records` таблице. Cursor-based пагинация.
+- **FilesRepository** -- Eloquent-запросы к таблице `files` (модель `FileRecord`). Cursor-based пагинация.
 - **FilesUsageIndex** -- индекс использования файлов в запросах.
 - **FilesCleanupRunner** -- очистка неиспользуемых файлов.
 - **FilePurpose** enum.

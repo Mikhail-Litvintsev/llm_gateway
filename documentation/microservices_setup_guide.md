@@ -56,7 +56,7 @@
 
 ## 2. Архитектура контейнеров
 
-Шлюз состоит из 7 контейнеров:
+Шлюз состоит из 6 контейнеров. `llm_gateway` -- один php-fpm контейнер, внутри которого параллельно работают два пула: `www` (порт 9000) для обычных запросов и `streaming` (порт 9001) для SSE. Маршрутизация между пулами выполняется в nginx по `Accept` header.
 
 ```
                     +------------------+
@@ -66,48 +66,47 @@
                              |
                              v
                     +------------------+
-                    |      nginx       |
+                    |    llm_nginx     |
                     |    (port 80)     |
                     +--------+---------+
                              |
-                +------------+------------+
-                |                         |
-                v                         v
-    +---------------------+   +------------------------+
-    | php-fpm-default     |   | php-fpm-streaming      |
-    | (port 9000)         |   | (port 9001)            |
-    | Обычные запросы     |   | SSE/streaming запросы  |
-    +---------------------+   +------------------------+
-                |                         |
-       +-------+-------+        +--------+--------+
-       |               |        |                 |
-       v               v        v                 v
-  +---------+    +-----------+
-  | MySQL   |    |   Redis   |
-  | 8.4     |    |   7       |
-  +---------+    +-----------+
-                       ^
-                       |
-              +--------+--------+
-              |                 |
-    +------------------+  +------------------+
-    | queue-worker (xN)|  |    scheduler     |
-    | high,default,    |  | schedule:work    |
-    | low,batch        |  |                  |
-    +------------------+  +------------------+
+                             v
+                  +-------------------------+
+                  |      llm_gateway        |
+                  |   (php-fpm, один контейнер) |
+                  |  pool www       : 9000  |
+                  |  pool streaming : 9001  |
+                  +-----------+-------------+
+                              |
+                  +-----------+-----------+
+                  |                       |
+                  v                       v
+            +-----------+           +-----------+
+            | llm_mysql |           | llm_redis |
+            |  8.4      |           |  7-alpine |
+            +-----------+           +-----------+
+                                         ^
+                                         |
+                            +------------+------------+
+                            |                         |
+              +----------------------+    +------------------+
+              |  llm_queue_worker    |    |  llm_scheduler   |
+              |  queue:work          |    |  schedule:work   |
+              |  high,default,low,   |    |                  |
+              |  batch               |    |                  |
+              +----------------------+    +------------------+
 ```
 
 ### Роли контейнеров
 
 | Контейнер | Образ | Назначение |
 |---|---|---|
-| nginx | `nginx:alpine` | Reverse proxy, маршрутизация по Accept header |
-| php-fpm-default | `php:8.4-fpm` (custom) | Обработка обычных HTTP-запросов (port 9000) |
-| php-fpm-streaming | `php:8.4-fpm` (custom) | Обработка streaming/SSE запросов (port 9001) |
-| mysql | `mysql:8.4` | Хранение данных, аудит, логи запросов |
-| redis | `redis:7-alpine` | Очереди, кеш, rate limiting |
-| queue-worker | `php:8.4-fpm` (custom) | Обработка фоновых задач через Laravel Queue |
-| scheduler | `php:8.4-fpm` (custom) | Запуск периодических задач (cron) |
+| `llm_nginx` | `nginx:alpine` | Reverse proxy, маршрутизация между пулами по Accept header |
+| `llm_gateway` | `php:8.4-fpm` (custom) | Один php-fpm контейнер с двумя пулами: `www` (9000, обычные запросы) и `streaming` (9001, SSE) |
+| `llm_mysql` | `mysql:8.4` | Хранение данных, аудит, логи запросов |
+| `llm_redis` | `redis:7-alpine` | Очереди, кеш, rate limiting |
+| `llm_queue_worker` | `php:8.4-fpm` (custom) | Обработка фоновых задач через Laravel Queue |
+| `llm_scheduler` | `php:8.4-fpm` (custom) | Запуск периодических задач (`schedule:work`) |
 
 ### Сети
 
@@ -262,34 +261,16 @@ LLM_LOG_LEVEL=error
 
 ```yaml
 services:
-  php-fpm-default:
+  llm_gateway:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: llm_gateway_default
+    container_name: llm_gateway
     volumes:
       - .:/var/www/html
-      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
       - ./docker/php-fpm/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf
-    networks:
-      - microservices-llm
-      - llm_internal
-    depends_on:
-      - llm_mysql
-      - llm_redis
-    env_file:
-      - .env
-    restart: unless-stopped
-
-  php-fpm-streaming:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    container_name: llm_gateway_streaming
-    volumes:
-      - .:/var/www/html
-      - ./docker/php/php-streaming.ini:/usr/local/etc/php/php.ini
-      - ./docker/php-fpm/pool.d/streaming.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/php-fpm/pool.d/streaming.conf:/usr/local/etc/php-fpm.d/streaming.conf
     networks:
       - microservices-llm
       - llm_internal
@@ -312,8 +293,7 @@ services:
       - microservices-llm
       - llm_internal
     depends_on:
-      - php-fpm-default
-      - php-fpm-streaming
+      - llm_gateway
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/internal/health"]
       interval: 30s
@@ -340,11 +320,8 @@ services:
   llm_redis:
     image: redis:7-alpine
     container_name: llm_redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
     ports:
       - "6381:6379"
-    volumes:
-      - llm_redis_data:/data
     networks:
       - llm_internal
     restart: unless-stopped
@@ -357,14 +334,14 @@ services:
     command: php artisan queue:work redis --queue=high,default,low,batch --sleep=3 --tries=1 --max-time=3600 --max-jobs=1000 --memory=256
     volumes:
       - .:/var/www/html
-      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
     networks:
       - microservices-llm
       - llm_internal
     depends_on:
       - llm_mysql
       - llm_redis
-      - php-fpm-default
+      - llm_gateway
     env_file:
       - .env
     restart: unless-stopped
@@ -377,13 +354,13 @@ services:
     command: php artisan schedule:work
     volumes:
       - .:/var/www/html
-      - ./docker/php/php-default.ini:/usr/local/etc/php/php.ini
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
     networks:
       - llm_internal
     depends_on:
       - llm_mysql
       - llm_redis
-      - php-fpm-default
+      - llm_gateway
     env_file:
       - .env
     restart: unless-stopped
@@ -393,68 +370,53 @@ networks:
     external: true
   llm_internal:
     driver: bridge
+    ipam:
+      config:
+        - subnet: "10.10.1.0/24"
 
 volumes:
   llm_mysql_data:
-  llm_redis_data:
 ```
 
 ### nginx конфигурация (docker/nginx/default.conf)
 
-Маршрутизация между двумя php-fpm пулами на основе Accept header и location:
+Маршрутизация между пулами `www` (9000) и `streaming` (9001) одного контейнера `llm_gateway` на основе `Accept` header:
 
 ```nginx
 map $http_accept $fpm_backend {
-    default                    php-fpm-default:9000;
-    ~text/event-stream         php-fpm-streaming:9001;
+    default             llm_gateway:9000;
+    ~text/event-stream  llm_gateway:9001;
 }
 
 server {
     listen 80;
     server_name _;
     root /var/www/html/public;
-    index index.php;
+    index index.php index.html;
 
-    # Обычные запросы: до 64 MB
-    client_max_body_size 64M;
+    client_max_body_size 50M;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
-    # Messages endpoint -- маршрутизация на streaming pool при SSE
     location ~ ^/api/v1/messages$ {
         fastcgi_pass $fpm_backend;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
         include fastcgi_params;
-
-        fastcgi_read_timeout 900s;
-        fastcgi_send_timeout 900s;
+        fastcgi_read_timeout 1800s;
+        fastcgi_send_timeout 1800s;
         fastcgi_buffering off;
         fastcgi_request_buffering off;
-
-        proxy_read_timeout 900s;
     }
 
-    # Files upload -- увеличенный лимит тела
-    location ~ ^/api/v1/files$ {
-        fastcgi_pass php-fpm-default:9000;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
-        include fastcgi_params;
-
-        client_max_body_size 128M;
-        fastcgi_read_timeout 300s;
-    }
-
-    # Все остальные PHP-запросы
     location ~ \.php$ {
-        fastcgi_pass php-fpm-default:9000;
+        fastcgi_pass llm_gateway:9000;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include fastcgi_params;
-        fastcgi_read_timeout 300s;
+        fastcgi_read_timeout 300;
     }
 
     location ~ /\.(?!well-known).* {
@@ -462,6 +424,8 @@ server {
     }
 }
 ```
+
+> **Примечание.** Глобальный `client_max_body_size 50M` сейчас одинаков для всех эндпоинтов. Если планируется загружать файлы размером 64+ MB (`/api/v1/files`), добавьте отдельный `location` с повышенным лимитом и синхронизируйте `post_max_size` / `upload_max_filesize` в `docker/php/php.ini` (сейчас также 50M).
 
 ### Создание внешней сети
 
@@ -483,27 +447,29 @@ docker compose up -d --build
 
 Модели Claude Opus и Sonnet поддерживают context window 1 000 000 токенов. Один запрос на полный контекст может достигать десятков мегабайт и выполняться несколько минут. Ниже -- конкретные значения лимитов.
 
-### nginx
+### nginx (текущие значения)
 
-| Параметр | Значение (messages) | Значение (files) | Назначение |
-|---|---|---|---|
-| `client_max_body_size` | `64M` | `128M` | Максимальный размер тела запроса |
-| `proxy_read_timeout` | `900s` | `300s` | Таймаут ожидания ответа от upstream |
-| `fastcgi_read_timeout` | `900s` | `300s` | Таймаут чтения ответа от php-fpm |
-| `fastcgi_send_timeout` | `900s` | -- | Таймаут отправки запроса в php-fpm |
-| `fastcgi_buffering` | `off` | -- | Отключено для streaming (SSE) |
-| `fastcgi_request_buffering` | `off` | -- | Отключено для streaming |
+| Параметр | Значение | Назначение |
+|---|---|---|
+| `client_max_body_size` | `50M` | Максимальный размер тела запроса (глобально) |
+| `fastcgi_read_timeout` (`/api/v1/messages`) | `1800s` | Таймаут чтения ответа от php-fpm для длинных запросов и SSE |
+| `fastcgi_send_timeout` (`/api/v1/messages`) | `1800s` | Таймаут отправки запроса в php-fpm |
+| `fastcgi_read_timeout` (прочие `\.php$`) | `300s` | Таймаут для остальных PHP-запросов |
+| `fastcgi_buffering` (`/api/v1/messages`) | `off` | Отключено для streaming (SSE) |
+| `fastcgi_request_buffering` (`/api/v1/messages`) | `off` | Отключено для streaming |
 
-### php-fpm default pool (php-default.ini)
+### php-fpm, общий `docker/php/php.ini`
+
+Единственный `php.ini` применяется к обоим пулам (параметры пула переопределяют его через `php_admin_value`):
 
 ```ini
-memory_limit = 512M
-post_max_size = 64M
-upload_max_filesize = 64M
-max_execution_time = 600
+memory_limit=256M
+upload_max_filesize=50M
+post_max_size=50M
+max_execution_time=300
 ```
 
-### php-fpm default pool (www.conf)
+### php-fpm `www` pool (`docker/php-fpm/pool.d/www.conf`)
 
 ```ini
 [www]
@@ -514,19 +480,14 @@ pm.start_servers = 10
 pm.min_spare_servers = 5
 pm.max_spare_servers = 20
 pm.max_requests = 1000
-request_terminate_timeout = 600s
+request_terminate_timeout = 1800s
+
+php_admin_value[max_execution_time] = 1800
 ```
 
-### php-fpm streaming pool (php-streaming.ini)
+> `request_terminate_timeout = 1800s` и `max_execution_time = 1800` выровнены с `fastcgi_read_timeout 1800s` из nginx для `/api/v1/messages` и таким же таймаутом в `streaming` пуле. Это нужно для sync-запросов с большим контекстом, которые могут обрабатываться несколько минут.
 
-```ini
-memory_limit = 512M
-max_execution_time = 900
-output_buffering = Off
-zlib.output_compression = Off
-```
-
-### php-fpm streaming pool (streaming.conf)
+### php-fpm `streaming` pool (`docker/php-fpm/pool.d/streaming.conf`)
 
 ```ini
 [streaming]
@@ -538,26 +499,28 @@ pm.min_spare_servers = 10
 pm.max_spare_servers = 30
 pm.max_requests = 500
 request_terminate_timeout = 1800s
+
+php_admin_value[memory_limit] = 512M
+php_admin_value[max_execution_time] = 0
+php_admin_value[output_buffering] = Off
+php_admin_value[zlib.output_compression] = Off
 ```
 
 ### Files API
 
-Для загрузки файлов через Files API:
+Текущий глобальный лимит nginx -- `50M`, `php.ini` также `50M`. Для загрузки файлов большего размера:
 
-```ini
-post_max_size = 128M
-upload_max_filesize = 128M
-```
+1. добавьте отдельный `location ~ ^/api/v1/files$` в nginx с повышенным `client_max_body_size`;
+2. синхронизируйте `post_max_size` / `upload_max_filesize` в `docker/php/php.ini` (или отдельном `php_admin_value` внутри `www.conf`).
 
-Запросы объемом более 64 MB должны использовать Files API (`POST /api/v1/files`) вместо прямой передачи контента в messages. Файл загружается отдельно, а в запросе передается `file_id`.
+Для payload > 50 MB рекомендуется пользоваться Files API (`POST /api/v1/files`) с передачей `file_id` вместо прямой вставки контента в messages.
 
-### Сводная таблица лимитов
+### Сводная таблица лимитов (факт)
 
-| Пул | memory_limit | max_execution_time | request_terminate_timeout | post_max_size |
+| Пул | php_admin memory_limit | php_admin max_execution_time | request_terminate_timeout | nginx client_max_body_size |
 |---|---|---|---|---|
-| default | 512M | 600s | 600s | 64M |
-| streaming | 512M | 900s | 1800s | 64M |
-| files upload | 512M | 600s | 600s | 128M |
+| www | 256M (из php.ini) | 1800s | 1800s | 50M |
+| streaming | 512M | 0 (unlimited) | 1800s | 50M |
 
 ---
 

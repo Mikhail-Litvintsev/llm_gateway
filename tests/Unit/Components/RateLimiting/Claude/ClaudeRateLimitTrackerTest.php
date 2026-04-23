@@ -6,6 +6,7 @@ namespace Tests\Unit\Components\RateLimiting\Claude;
 
 use App\Components\RateLimiting\Claude\ClaudeRateLimitTracker;
 use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
+use App\Components\RateLimiting\Claude\RateLimitNamespace;
 use Illuminate\Support\Facades\Redis;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -28,7 +29,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
             ->once()
             ->andReturn(null);
 
-        $this->tracker->canProceed('hash1', 'claude-sonnet-4-6', 1000, 500, 0);
+        $this->tracker->canProceed(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', 1000, 500, 0);
         $this->assertTrue(true);
     }
 
@@ -58,7 +59,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
                 return str_contains($key, 'claude_rl:') && $ttl > 0;
             });
 
-        $this->tracker->recordFromHeaders('hash1', 'claude-sonnet-4-6', $headers);
+        $this->tracker->recordFromHeaders(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', $headers);
 
         Redis::shouldReceive('get')
             ->once()
@@ -80,7 +81,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
                 ]);
             });
 
-        $snapshot = $this->tracker->snapshot('hash1', 'claude-sonnet-4-6');
+        $snapshot = $this->tracker->snapshot(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6');
 
         $this->assertNotNull($snapshot);
         $this->assertSame(1000, $snapshot->requestsLimit);
@@ -111,7 +112,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
             ]));
 
         // inputTokensRemaining=0, estimated=5000, cacheRead=5000 → effective=0 → no throw
-        $this->tracker->canProceed('hash1', 'claude-sonnet-4-6', 5000, 100, 5000);
+        $this->tracker->canProceed(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', 5000, 100, 5000);
         $this->assertTrue(true);
     }
 
@@ -140,7 +141,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
 
         $this->expectException(RateLimitExceededException::class);
 
-        $this->tracker->canProceed('hash1', 'claude-sonnet-4-6', 100, 100, 0);
+        $this->tracker->canProceed(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', 100, 100, 0);
     }
 
     #[Test]
@@ -166,7 +167,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
                 'recorded_at' => now()->subMinutes(2)->toIso8601String(),
             ]));
 
-        $this->tracker->canProceed('hash1', 'claude-sonnet-4-6', 5000, 5000, 0);
+        $this->tracker->canProceed(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', 5000, 5000, 0);
         $this->assertTrue(true);
     }
 
@@ -196,6 +197,6 @@ final class ClaudeRateLimitTrackerTest extends TestCase
         // 10% margin: effective = floor(100 * 90/100) = 90, need 91 → throw
         $this->expectException(RateLimitExceededException::class);
 
-        $this->tracker->canProceed('hash1', 'claude-sonnet-4-6', 91, 100, 0);
+        $this->tracker->canProceed(RateLimitNamespace::Messages, 'hash1', 'claude-sonnet-4-6', 91, 100, 0);
     }
 }

@@ -5,7 +5,7 @@ echo "=== LLM Gateway — Start ==="
 
 # 1. Создать Docker-сеть microservices-llm, если не существует
 docker network inspect microservices-llm >/dev/null 2>&1 || \
-    docker network create microservices-llm
+    docker network create --subnet="10.10.0.0/24" microservices-llm
 
 # 2. Остановить контейнеры, если запущены
 if docker-compose ps --quiet 2>/dev/null | grep -q .; then

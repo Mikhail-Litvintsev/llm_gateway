@@ -104,7 +104,7 @@ php artisan claude:status
 
 ### `claude:resume`
 
-Возобновление приостановленных запросов и retry неудачных webhook.
+Снимает глобальную паузу на обращения к Claude API (удаляет Redis-ключ `claude:pause:global`). Следующий healthcheck-пинг произойдёт в течение минуты.
 
 ```bash
 php artisan claude:resume
@@ -178,7 +178,11 @@ php artisan claude:poll-batches
 
 ### `requests:cleanup`
 
-Очистка устаревших записей `request_raw` (по `retention_until`).
+TTL-очистка записей по `created_at` из таблицы `requests`:
+
+- `async_pending` -- записи с истекшим `expires_at` (старше 1 дня).
+- `request_raw` -- старше `llm.raw_log_retention_days` (по умолчанию 14).
+- `request_usage` и `requests` -- старше `llm.session_default_ttl_days` (по умолчанию 30).
 
 ```bash
 php artisan requests:cleanup

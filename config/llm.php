@@ -14,6 +14,7 @@ return [
 
     'claude' => [
         'default_api_key' => env('ANTHROPIC_API_KEY'),
+        'admin_api_key' => env('CLAUDE_ADMIN_API_KEY'),
         'anthropic_version' => '2023-06-01',
 
         'endpoints' => [
@@ -22,6 +23,7 @@ return [
             'batches' => 'https://api.anthropic.com/v1/messages/batches',
             'files' => 'https://api.anthropic.com/v1/files',
             'models' => 'https://api.anthropic.com/v1/models',
+            'usage_report' => 'https://api.anthropic.com/v1/organizations/usage_report/messages',
         ],
 
         'default_model_alias' => 'claude-sonnet',
@@ -95,13 +97,18 @@ return [
                 'batch_input' => 0.50,
                 'batch_output' => 2.50,
             ],
+            'fast_multiplier' => 6.0,
             'server_tools' => [
                 'web_search_per_1k' => 10.00,
                 'web_fetch' => 0.0,
                 'code_execution_free_hours_per_month' => 1550,
                 'code_execution_per_hour' => 0.05,
             ],
-            'inference_geo_us_multiplier' => 1.10,
+        ],
+
+        'inference_geo' => [
+            'allowed' => ['us'],
+            'multiplier' => 1.10,
         ],
 
         'beta_headers' => [
@@ -124,26 +131,52 @@ return [
             'auto_top_level_default' => true,
             'min_prefix_safety_margin_tokens' => 100,
             'default_ttl' => '5m',
+            'estimation_chars_per_token' => 3.5,
+            'minimum_prefix_tokens' => [
+                'opus' => 1024,
+                'sonnet' => 1024,
+                'haiku' => 2048,
+            ],
         ],
 
         'batch' => [
             'enabled' => true,
+            'max_items' => 100_000,
             'max_wait_seconds' => 24 * 3600,
             'auto_use_1h_cache_for_batch' => true,
+            'accumulator' => [
+                'trigger_count' => 100,
+                'trigger_bytes' => 50 * 1024 * 1024,
+                'trigger_seconds' => 300,
+            ],
         ],
 
         'thinking' => [
             'default_effort' => 'medium',
         ],
 
+        'skills' => [
+            'prebuilt' => ['xlsx', 'docx', 'pptx', 'pdf'],
+        ],
+
         'service_tier' => [
             'default' => 'standard_only',
+            'priority_multiplier' => 1.0,
         ],
 
         'timeouts' => [
             'connect' => 10,
             'request' => 600,
             'streaming' => 1800,
+        ],
+
+        'files' => [
+            'hard_delete_grace_days' => 14,
+            'unused_alert_days' => 90,
+        ],
+
+        'count_tokens' => [
+            'output_tokens_factor' => 0.5,
         ],
     ],
 
@@ -161,12 +194,23 @@ return [
     ],
 
     'webhook' => [
+        'grace_period_seconds' => 86400,
         'default_max_attempts' => 10,
         'backoff' => 'exponential',
         'initial_delay_seconds' => 10,
         'max_delay_seconds' => 3600,
         'request_timeout_seconds' => 30,
         'signing_algorithm' => 'sha256',
+    ],
+
+    'async' => [
+        'pending_ttl_days' => 3,
+    ],
+
+    'billing' => [
+        'hard_cap' => [
+            'redis_key_prefix' => 'llm:billing:spend:',
+        ],
     ],
 
     'auth' => [

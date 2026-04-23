@@ -7,7 +7,28 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $api_key_hash
+ * @property ?string $signing_secret
+ * @property ?array $allowed_features
+ * @property bool $is_dev_mode
+ * @property ?string $monthly_spend_cap_usd
+ * @property ?string $current_month_spend_usd
+ * @property ?int $rate_limit_per_minute
+ * @property ?int $workspace_id
+ * @property ?string $inference_geo
+ * @property ?string $anthropic_workspace_id
+ * @property ?string $signing_secret_current_encrypted
+ * @property ?string $signing_secret_previous_encrypted
+ * @property ?Carbon $signing_secret_rotated_at
+ * @property ?Carbon $created_at
+ * @property ?Carbon $updated_at
+ * @property ?Carbon $deleted_at
+ */
 class Client extends Model
 {
     use SoftDeletes;

@@ -16,5 +16,11 @@ final readonly class CostBreakdown
         public Money $serverToolCodeExecCost,
         public Money $geoMultiplierApplied,
         public Money $totalCost,
+        public float $webSearchUsd = 0.0,
+        public float $codeExecutionUsd = 0.0,
+        public float $codeExecutionFreeHoursRemaining = 0.0,
+        public int $totalInputTokensBilled = 0,
+        public int $totalOutputTokensBilled = 0,
+        public array $iterationsSnapshot = [],
     ) {}
 }

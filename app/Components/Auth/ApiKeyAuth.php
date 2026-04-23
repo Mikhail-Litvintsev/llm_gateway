@@ -30,7 +30,7 @@ final class ApiKeyAuth
             return $this->unauthorized();
         }
 
-        $request->attributes->set('client', $client);
+        $request->attributes->set('auth.client', $client);
 
         return $next($request);
     }

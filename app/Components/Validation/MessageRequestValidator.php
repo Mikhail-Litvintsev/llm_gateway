@@ -6,11 +6,19 @@ namespace App\Components\Validation;
 
 use App\Components\Validation\DTO\ValidationError;
 use App\Components\Validation\DTO\ValidationResult;
+use App\Components\Validation\Enums\ServiceTier;
+use App\Components\Validation\Enums\Speed;
+use App\Components\Validation\Rules\CitationsConsistencyRule;
+use App\Components\Validation\Rules\MemoryModelGateRule;
+use App\Components\Validation\Rules\PtcContractRule;
+use App\Components\Validation\Rules\SearchResultBlockRule;
+use App\Components\Validation\Rules\ServerFeaturesRule;
+use App\Components\Validation\Rules\ThinkingCompatibilityRule;
 use App\Models\Client;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Validator;
 
-final class MessageRequestValidator
+class MessageRequestValidator
 {
     private const RULES_PER_CONTEXT = [
         'sync' => [
@@ -52,7 +60,7 @@ final class MessageRequestValidator
             'allow_service_tier_auto' => true,
             'allow_fast_mode' => true,
             'require_callback_url' => false,
-            'override_from_session' => ['model_alias', 'system', 'tools'],
+            'override_from_session' => [],
         ],
         'count_tokens' => [
             'require_stream' => false,
@@ -68,21 +76,26 @@ final class MessageRequestValidator
 
     public function __construct(
         private readonly Validator $schemaValidator,
+        private readonly ?ServerFeaturesRule $serverFeaturesRule = null,
     ) {}
 
     public function validate(array $payload, ValidationContext $ctx, Client $client): ValidationResult
     {
         $errors = [];
+        $messagePayload = $ctx === ValidationContext::BatchItem
+            ? ($payload['params'] ?? $payload)
+            : $payload;
 
-        $this->preCheck($payload, $errors);
+        $this->preCheck($messagePayload, $errors);
 
         if ($errors !== []) {
             return new ValidationResult($errors);
         }
 
         $this->schemaCheck($payload, $ctx, $errors);
-        $this->contextRulesCheck($payload, $ctx, $client, $errors);
-        $this->semanticCheck($payload, $errors);
+        $this->contextRulesCheck($messagePayload, $ctx, $client, $errors);
+        $this->semanticCheck($messagePayload, $errors);
+        $this->phase4Rules($messagePayload, $ctx, $client, $errors);
 
         return new ValidationResult($errors);
     }
@@ -175,6 +188,117 @@ final class MessageRequestValidator
             if (isset($payload[$payloadKey])) {
                 $errors[] = new ValidationError("/{$payloadKey}", 'field_overridden_by_session', "Field \"{$payloadKey}\" is managed by session and must not be in payload");
             }
+        }
+    }
+
+    private function phase4Rules(array $payload, ValidationContext $ctx, Client $client, array &$errors): void
+    {
+        $this->serverFeaturesRule?->check($payload, $client);
+
+        $serviceTierRaw = $payload['service_tier'] ?? config('llm.claude.service_tier.default', 'standard_only');
+        $serviceTier = ServiceTier::tryFrom($serviceTierRaw);
+        if ($serviceTier === null) {
+            $errors[] = new ValidationError('/service_tier', 'service_tier_invalid', "Invalid service_tier value: '$serviceTierRaw'");
+            return;
+        }
+        if ($serviceTier === ServiceTier::Auto) {
+            $allowedFeatures = $client->allowed_features ?? [];
+            if (!($allowedFeatures['priority_tier'] ?? false)) {
+                $errors[] = new ValidationError('/service_tier', 'priority_tier_not_enabled', 'Priority Tier feature is not enabled for this client');
+                return;
+            }
+        }
+
+        $inferenceGeo = $payload['inference_geo'] ?? $client->inference_geo ?? null;
+        if ($inferenceGeo !== null) {
+            $allowed = config('llm.claude.inference_geo.allowed', []);
+            if (!in_array($inferenceGeo, $allowed, true)) {
+                $errors[] = new ValidationError('/inference_geo', 'inference_geo_invalid', "Invalid inference_geo value: '$inferenceGeo'");
+                return;
+            }
+        }
+
+        $speedRaw = $payload['speed'] ?? null;
+        if ($speedRaw !== null) {
+            $speed = Speed::tryFrom($speedRaw);
+            if ($speed === null) {
+                $errors[] = new ValidationError('/speed', 'speed_invalid', "Invalid speed value: '$speedRaw'");
+                return;
+            }
+            if ($speed === Speed::Fast) {
+                $allowedFeatures = $client->allowed_features ?? [];
+                if (!($allowedFeatures['fast_mode'] ?? false)) {
+                    $errors[] = new ValidationError('/speed', 'fast_mode_not_enabled', 'Fast mode is not enabled for this client');
+                    return;
+                }
+                $modelAlias = $payload['model'] ?? '';
+                $capabilities = config("llm.claude.model_capabilities.$modelAlias", []);
+                if (!($capabilities['supports_fast_mode'] ?? false)) {
+                    $errors[] = new ValidationError('/speed', 'fast_mode_model_unsupported', "Fast mode is not supported on model $modelAlias");
+                    return;
+                }
+                if ($ctx === ValidationContext::BatchItem) {
+                    $errors[] = new ValidationError('/speed', 'fast_mode_batch_incompatible', 'Fast mode is incompatible with Batch API');
+                    return;
+                }
+                if ($serviceTier === ServiceTier::Auto) {
+                    $errors[] = new ValidationError('/speed', 'fast_mode_priority_incompatible', 'Fast mode is incompatible with priority service tier');
+                    return;
+                }
+            }
+        }
+
+        if (!empty($payload['mcp_servers'])) {
+            $allowedFeatures = $client->allowed_features ?? [];
+            if (!($allowedFeatures['mcp_connector'] ?? false)) {
+                $errors[] = new ValidationError('/mcp_servers', 'mcp_connector_not_enabled', 'MCP connector is not enabled for this client');
+                return;
+            }
+        }
+
+        if (!empty($payload['skills'])) {
+            $allowedFeatures = $client->allowed_features ?? [];
+            if (!($allowedFeatures['skills'] ?? false)) {
+                $errors[] = new ValidationError('/skills', 'skills_not_enabled', 'Skills feature is not enabled for this client');
+                return;
+            }
+            $hasCodeExecution = array_any(
+                $payload['tools'] ?? [],
+                static fn (mixed $tool): bool => is_string($tool['type'] ?? null) && str_starts_with($tool['type'], 'code_execution'),
+            );
+            if (!$hasCodeExecution) {
+                $errors[] = new ValidationError('/skills', 'skills_require_code_execution', 'Skills require code_execution tool to be present in the request');
+                return;
+            }
+        }
+
+        $memoryGate = (new MemoryModelGateRule())->check($payload);
+        if ($memoryGate !== null) {
+            $errors[] = $memoryGate;
+            return;
+        }
+
+        $searchResult = (new SearchResultBlockRule())->check($payload);
+        if ($searchResult !== null) {
+            $errors[] = $searchResult;
+            return;
+        }
+
+        $citations = (new CitationsConsistencyRule())->check($payload);
+        if ($citations !== null) {
+            $errors[] = $citations;
+            return;
+        }
+
+        $thinking = (new ThinkingCompatibilityRule())->check($payload);
+        if ($thinking !== null) {
+            $errors[] = $thinking;
+            return;
+        }
+
+        $ptc = (new PtcContractRule())->check($payload);
+        if ($ptc !== null) {
+            $errors[] = $ptc;
         }
     }
 

@@ -1,70 +1,60 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\Internal;
 
+use App\Components\Healthcheck\Enums\HealthStatus;
+use App\Components\Healthcheck\Healthcheck;
+use App\Components\RateLimiting\Claude\ClaudeRateLimitTracker;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 class MonitoringController extends Controller
 {
-    public function health(): JsonResponse
+    public function health(Healthcheck $healthcheck): JsonResponse
     {
-        $lastRequest = RequestLog::orderByDesc('created_at')->value('created_at');
+        $report = $healthcheck->report();
+
+        $httpStatus = match ($report->overall) {
+            HealthStatus::Ok => 200,
+            HealthStatus::Degraded => 200,
+            HealthStatus::Down => 503,
+        };
 
         return response()->json([
-            'status' => 'ok',
-            'queue_size' => DB::table('jobs')->count(),
-            'pending_prompts' => PendingPrompt::count(),
-            'pending_prompts_expired' => PendingPrompt::expired()->count(),
-            'pending_responses' => PendingResponse::count(),
-            'pending_responses_failed' => PendingResponse::where('delivery_status', DeliveryStatus::Failed)->count(),
-            'last_request_at' => $lastRequest?->toIso8601String(),
-        ]);
+            'status' => $report->overall->value,
+            'components' => array_map(fn (array $c) => [
+                'status' => $c['status']->value,
+                'latency_ms' => $c['latency_ms'],
+                'error' => $c['error'],
+            ], $report->components),
+            'anthropic_last_check_at' => $report->anthropicLastCheckAt?->toIso8601String(),
+            'anthropic_last_status' => $report->anthropicLastStatus?->value,
+        ], $httpStatus);
     }
 
-    public function stats(Request $request): JsonResponse
+    public function stats(ClaudeRateLimitTracker $tracker): JsonResponse
     {
-        $from = $request->query('from');
-        $to = $request->query('to');
-        $clientId = $request->query('client_id');
-
-        $query = RequestLog::query()
-            ->inPeriod($from, $to);
-
-        if ($clientId) {
-            $query->forClient((int) $clientId);
-        }
-
-        $total = $query->count();
-
-        $byStatus = (clone $query)
-            ->select('status', DB::raw('COUNT(*) as count'))
-            ->groupBy('status')
-            ->pluck('count', 'status')
-            ->toArray();
-
-        $byProvider = (clone $query)
-            ->whereNotNull('provider_used')
-            ->select('provider_used', DB::raw('COUNT(*) as count'))
-            ->groupBy('provider_used')
-            ->pluck('count', 'provider_used')
-            ->toArray();
-
-        $avgLatency = (int) ResponseLog::query()
-            ->whereIn('request_log_id', (clone $query)->select('id'))
-            ->avg('latency_ms');
-
-        $failedCount = $byStatus[RequestStatus::Failed->value] ?? 0;
-        $errorRate = $total > 0 ? round($failedCount / $total, 3) : 0;
-
         return response()->json([
-            'total_requests' => $total,
-            'by_status' => $byStatus,
-            'by_provider' => $byProvider,
-            'avg_latency_ms' => $avgLatency,
-            'error_rate' => $errorRate,
+            'queues' => [
+                'high' => Queue::size('high'),
+                'default' => Queue::size('default'),
+                'low' => Queue::size('low'),
+            ],
+            'async_pending_counts' => DB::table('async_pending')
+                ->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')
+                ->pluck('count', 'status')
+                ->all(),
+            'current_usage' => method_exists($tracker, 'currentSnapshot') ? $tracker->currentSnapshot() : [],
+            'top_spenders_month' => DB::table('clients')
+                ->orderByDesc('current_month_spend_usd')
+                ->limit(5)
+                ->get(['id', 'name', 'current_month_spend_usd'])
+                ->all(),
         ]);
     }
 }

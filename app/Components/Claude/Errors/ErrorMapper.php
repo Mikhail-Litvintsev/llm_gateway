@@ -24,6 +24,26 @@ final class ErrorMapper
         };
     }
 
+    /**
+     * @return array{type: string, message: string}
+     */
+    public function map(int $statusCode, string $rawBody): array
+    {
+        $decoded = json_decode($rawBody, true);
+
+        if (is_array($decoded) && isset($decoded['error'])) {
+            return [
+                'type' => $decoded['error']['type'] ?? $this->mapHttpStatus($statusCode),
+                'message' => $decoded['error']['message'] ?? 'Unknown error',
+            ];
+        }
+
+        return [
+            'type' => $this->mapHttpStatus($statusCode),
+            'message' => $rawBody !== '' ? $rawBody : 'Empty error response from Anthropic',
+        ];
+    }
+
     public function mapStreamErrorEvent(array $event): string
     {
         $type = $event['error']['type'] ?? 'unknown';

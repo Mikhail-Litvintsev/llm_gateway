@@ -16,5 +16,13 @@ final readonly class MessageResponse
         public ?string $anthropicRequestId,
         public ?string $anthropicOrganizationId,
         public array $rateLimitHeaders,
+        public ?string $serviceTierUsed = null,
+        public bool $compactionDetected = false,
+        public array $serverToolUseCounts = [],
+        public int $thinkingTokens = 0,
+        public array $iterations = [],
+        public array $memoryToolUses = [],
+        public array $citations = [],
+        public array $warnings = [],
     ) {}
 }

@@ -8,8 +8,8 @@ final readonly class ResultLine
 {
     public function __construct(
         public string $customId,
-        public string $status,
-        public ?array $result,
-        public ?array $error,
+        public string $type,
+        public ?array $message = null,
+        public ?array $error = null,
     ) {}
 }

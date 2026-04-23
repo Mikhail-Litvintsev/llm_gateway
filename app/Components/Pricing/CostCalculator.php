@@ -16,6 +16,8 @@ final class CostCalculator
     public function __construct(
         private readonly array $pricingConfig,
         private readonly float $geoUsMultiplier,
+        private readonly float $priorityMultiplier = 1.0,
+        private readonly float $fastMultiplier = 6.0,
     ) {}
 
     public function calculate(
@@ -23,6 +25,8 @@ final class CostCalculator
         string $modelAlias,
         bool $isBatched,
         bool $inferenceGeoUs,
+        ?string $serviceTierUsed = null,
+        bool $isFast = false,
     ): CostBreakdown {
         $tier = $this->pricingConfig[$modelAlias] ?? null;
 
@@ -35,8 +39,8 @@ final class CostCalculator
         $inputRate = $isBatched ? (string) $tier['batch_input'] : (string) $tier['input'];
         $outputRate = $isBatched ? (string) $tier['batch_output'] : (string) $tier['output'];
 
-        $inputCost = $this->tokenCost($usage->inputTokens, $inputRate);
-        $outputCost = $this->tokenCost($usage->outputTokens, $outputRate);
+        $inputCost = $this->tokenCost($usage->totalInputTokens ?: $usage->inputTokens, $inputRate);
+        $outputCost = $this->tokenCost($usage->totalOutputTokens ?: $usage->outputTokens, $outputRate);
         $cacheWrite5mCost = $this->tokenCost($usage->cacheCreation5mTokens, (string) $tier['cache_write_5m']);
         $cacheWrite1hCost = $this->tokenCost($usage->cacheCreation1hTokens, (string) $tier['cache_write_1h']);
         $cacheReadCost = $this->tokenCost($usage->cacheReadTokens, (string) $tier['cache_read']);
@@ -45,17 +49,18 @@ final class CostCalculator
         $webSearchCost = new Money(bcdiv(bcmul((string) $usage->serverToolWebSearchCount, $webSearchRate, 12), '1000', 12));
         $codeExecCost = Money::zero();
 
-        $subtotalForGeo = $inputCost
-            ->add($outputCost)
+        $geoMultiplierValue = new Money($inferenceGeoUs ? (string) $this->geoUsMultiplier : '1.00');
+        $priorityMultiplierValue = new Money($serviceTierUsed === 'priority' ? (string) $this->priorityMultiplier : '1.00');
+        $fastMultiplierValue = new Money($isFast ? (string) $this->fastMultiplier : '1.00');
+
+        $adjustedInput = $inputCost->multiply($geoMultiplierValue->amountUsd)->multiply($priorityMultiplierValue->amountUsd)->multiply($fastMultiplierValue->amountUsd);
+        $adjustedOutput = $outputCost->multiply($geoMultiplierValue->amountUsd)->multiply($priorityMultiplierValue->amountUsd)->multiply($fastMultiplierValue->amountUsd);
+
+        $totalCost = $adjustedInput
+            ->add($adjustedOutput)
             ->add($cacheWrite5mCost)
             ->add($cacheWrite1hCost)
-            ->add($cacheReadCost);
-
-        $geoMultiplierValue = new Money($inferenceGeoUs ? (string) $this->geoUsMultiplier : '1.00');
-
-        $geoAdjustedSubtotal = $subtotalForGeo->multiply($geoMultiplierValue->amountUsd);
-
-        $totalCost = $geoAdjustedSubtotal
+            ->add($cacheReadCost)
             ->add($webSearchCost)
             ->add($codeExecCost);
 
@@ -69,6 +74,9 @@ final class CostCalculator
             serverToolCodeExecCost: $codeExecCost,
             geoMultiplierApplied: $geoMultiplierValue,
             totalCost: $totalCost,
+            totalInputTokensBilled: $usage->totalInputTokens ?: $usage->inputTokens,
+            totalOutputTokensBilled: $usage->totalOutputTokens ?: $usage->outputTokens,
+            iterationsSnapshot: $usage->iterations,
         );
     }
 

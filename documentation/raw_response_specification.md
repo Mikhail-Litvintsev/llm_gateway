@@ -23,7 +23,7 @@
 | `model_snapshot` | `varchar` | Реальный snapshot (`claude-sonnet-4-6`) |
 | `anthropic_request_id` | `varchar` nullable | ID запроса на стороне Anthropic |
 | `anthropic_organization_id` | `varchar` nullable | Organization ID из ответа Anthropic |
-| `status` | `varchar(32)` | Статус: `queued`, `processing`, `completed`, `failed`, `timeout` |
+| `status` | `varchar(32)` | Значения из `App\Components\Logging\Enums\RequestStatus`: `accepted`, `in_progress`, `completed`, `completed_disconnected`, `failed_client_error`, `failed_server_error`, `failed_callback_delivery`, `failed_validation`, `failed_auth` |
 | `http_status` | `smallint unsigned` nullable | HTTP-код от Anthropic (200, 400, 429, ...) |
 | `error_type` | `varchar` nullable | Тип ошибки (`overloaded_error`, `rate_limit_error`, ...) |
 | `error_message` | `text` nullable | Текст ошибки |
@@ -75,16 +75,21 @@
 
 ## Lifecycle
 
-1. **Создание**: запись в `requests` создаётся при приёме запроса. `request_raw` создаётся одновременно с телом запроса. `retention_until` = `created_at` + retention period.
+1. **Создание**: запись в `requests` создаётся при приёме запроса. `request_raw` создаётся одновременно с телом запроса. Колонка `retention_until` заполняется как `created_at + raw_log_retention_days` для справки, но самим cleanup не используется.
 2. **Обновление**: после получения ответа от Anthropic заполняются `response_payload` в `request_raw`, `request_usage`, и поля `completed_at`/`http_status`/`status` в `requests`.
-3. **Очистка**: scheduled команда `requests:cleanup` удаляет записи `request_raw` с `retention_until < now()`. Записи `requests` и `request_usage` сохраняются для долгосрочного аудита.
+3. **Очистка**: scheduled команда `requests:cleanup` удаляет записи по `requests.created_at` -- см. Retention policy ниже.
 
 ---
 
 ## Retention policy
 
-- `request_raw`: хранится `raw_log_retention_days` дней (по умолчанию 14, настраивается в `config/llm.php`).
-- `requests` и `request_usage`: хранятся бессрочно (audit trail). При необходимости архивировать вручную.
+Удаление выполняется ежедневно командой `requests:cleanup` (03:00) по полю `requests.created_at`:
+
+- `request_raw`: старше `raw_log_retention_days` (по умолчанию 14, настраивается в `config/llm.php`).
+- `request_usage` и `requests`: старше `session_default_ttl_days` (по умолчанию 30).
+- `async_pending`: записи с `expires_at` старше 1 дня.
+
+Если нужен длительный audit trail, увеличьте `session_default_ttl_days` либо организуйте архивирование вручную перед истечением TTL.
 
 ---
 

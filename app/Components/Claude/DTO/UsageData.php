@@ -17,5 +17,10 @@ final readonly class UsageData
         public int $serverToolWebFetchCount,
         public int $serverToolCodeExecCount,
         public int $serverToolToolSearchCount,
+        public array $iterations = [],
+        public int $totalInputTokens = 0,
+        public int $totalOutputTokens = 0,
+        public int $totalCacheCreationTokens = 0,
+        public int $totalCacheReadTokens = 0,
     ) {}
 }

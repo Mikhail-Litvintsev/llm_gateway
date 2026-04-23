@@ -23,8 +23,12 @@ final class DropLegacyTablesTest extends TestCase
     ];
 
     #[Test]
-    public function migration_throws_without_env_safeguard(): void
+    public function migration_throws_without_env_safeguard_when_legacy_tables_exist(): void
     {
+        Schema::create('api_clients', function ($table) {
+            $table->id();
+        });
+
         $original = $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] ?? null;
         $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] = 'wrong-value';
         putenv('CLAUDE_ALLOW_LEGACY_DROP=wrong-value');
@@ -37,6 +41,7 @@ final class DropLegacyTablesTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertStringContainsString('CLAUDE_ALLOW_LEGACY_DROP', $e->getMessage());
         } finally {
+            Schema::dropIfExists('api_clients');
             if ($original !== null) {
                 $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] = $original;
                 putenv("CLAUDE_ALLOW_LEGACY_DROP=$original");
@@ -45,6 +50,14 @@ final class DropLegacyTablesTest extends TestCase
                 putenv('CLAUDE_ALLOW_LEGACY_DROP');
             }
         }
+    }
+
+    #[Test]
+    public function migration_skips_when_no_legacy_tables_exist(): void
+    {
+        $migration = require database_path('migrations/2026_05_01_000001_drop_legacy_tables.php');
+        $migration->up();
+        $this->assertTrue(true, 'Migration skipped without errors when no legacy tables exist');
     }
 
     #[Test]

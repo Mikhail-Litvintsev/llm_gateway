@@ -448,7 +448,7 @@ WHERE batch_id = '<BATCH_ID>'
 - Input: $[НОВАЯ_ЦЕНА]
 - Output: $[НОВАЯ_ЦЕНА]
 
-Полная таблица цен доступна через API: GET /internal/stats
+Полная таблица цен определена в `config/llm.php` -> `claude.pricing`. Проверить локально: `php artisan claude:price-check`.
 
 Если у вас настроены бюджетные лимиты (monthly_spend_cap_usd),
 рекомендуем пересмотреть их с учетом новых тарифов.

@@ -20,6 +20,15 @@ return new class extends Migration {
 
     public function up(): void
     {
+        $existingLegacy = array_filter(
+            self::LEGACY_TABLES,
+            fn(string $table) => Schema::hasTable($table),
+        );
+
+        if (empty($existingLegacy)) {
+            return;
+        }
+
         if (env('CLAUDE_ALLOW_LEGACY_DROP') !== 'yes-i-confirm-data-loss-2026-05') {
             throw new RuntimeException(
                 'Destructive migration. Set CLAUDE_ALLOW_LEGACY_DROP=yes-i-confirm-data-loss-2026-05 to proceed. '
@@ -28,7 +37,7 @@ return new class extends Migration {
             );
         }
 
-        foreach (self::LEGACY_TABLES as $table) {
+        foreach ($existingLegacy as $table) {
             Schema::dropIfExists($table);
         }
     }
