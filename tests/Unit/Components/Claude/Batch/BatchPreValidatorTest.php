@@ -39,7 +39,7 @@ final class BatchPreValidatorTest extends TestCase
 
         $this->validator = new BatchPreValidator($this->messageValidator, $modelResolver);
 
-        $this->client = new Client();
+        $this->client = new Client;
         $this->client->id = 1;
     }
 

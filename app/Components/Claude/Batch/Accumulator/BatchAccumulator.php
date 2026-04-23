@@ -109,7 +109,7 @@ final class BatchAccumulator
 
     private function loadAppendScript(): string
     {
-        return file_get_contents(__DIR__ . '/lua/append_and_maybe_trigger.lua');
+        return file_get_contents(__DIR__.'/lua/append_and_maybe_trigger.lua');
     }
 
     private function ensureCallbackUrlConsistency(AccumulatorBucketKey $bucketKey, ?string $callbackUrl): void
@@ -128,7 +128,7 @@ final class BatchAccumulator
         }
 
         if ((string) $existing !== $callbackUrl) {
-            throw new CallbackUrlMismatchException();
+            throw new CallbackUrlMismatchException;
         }
     }
 }

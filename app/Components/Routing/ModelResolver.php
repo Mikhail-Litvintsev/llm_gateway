@@ -52,7 +52,7 @@ class ModelResolver
         $snapshot = $resolved->snapshot;
         $configCaps = ModelCapabilities::fromConfig($snapshot, $resolved->capabilities);
 
-        if (!$live || $this->fetcher === null) {
+        if (! $live || $this->fetcher === null) {
             return $configCaps;
         }
 
@@ -61,6 +61,7 @@ class ModelResolver
 
         if ($cached !== null) {
             $data = json_decode($cached, true, 512, JSON_THROW_ON_ERROR);
+
             return ModelCapabilities::fromApi($data);
         }
 

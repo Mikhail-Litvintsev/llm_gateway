@@ -7,7 +7,7 @@ namespace App\Components\Delivery\Sync\DTO;
 final readonly class AnthropicResponseEnvelope
 {
     /**
-     * @param array<string, string> $anthropicHeaders
+     * @param  array<string, string>  $anthropicHeaders
      */
     public function __construct(
         public int $httpStatusCode,

@@ -99,6 +99,6 @@ final readonly class Billing
     {
         $features = $client->allowed_features ?? [];
 
-        return !empty($features['hard_cap_enforcement']);
+        return ! empty($features['hard_cap_enforcement']);
     }
 }

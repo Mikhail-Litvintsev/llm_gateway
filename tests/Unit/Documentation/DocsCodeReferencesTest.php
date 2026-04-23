@@ -21,12 +21,12 @@ final class DocsCodeReferencesTest extends TestCase
         $missing = [];
         foreach ($components as $component) {
             $path = app_path("Components/{$component}");
-            if (!is_dir($path)) {
+            if (! is_dir($path)) {
                 $missing[] = $component;
             }
         }
 
-        $this->assertEmpty($missing, 'Referenced components not found: ' . implode(', ', $missing));
+        $this->assertEmpty($missing, 'Referenced components not found: '.implode(', ', $missing));
     }
 
     #[Test]
@@ -41,12 +41,12 @@ final class DocsCodeReferencesTest extends TestCase
         $missing = [];
 
         foreach ($commands as $command) {
-            if (!in_array($command, $registeredCommands, true)) {
+            if (! in_array($command, $registeredCommands, true)) {
                 $missing[] = $command;
             }
         }
 
-        $this->assertEmpty($missing, 'Referenced commands not found: ' . implode(', ', $missing));
+        $this->assertEmpty($missing, 'Referenced commands not found: '.implode(', ', $missing));
     }
 
     #[Test]
@@ -78,7 +78,7 @@ final class DocsCodeReferencesTest extends TestCase
             }
         }
 
-        $this->assertEmpty($missing, 'Referenced config keys not found: ' . implode(', ', $missing));
+        $this->assertEmpty($missing, 'Referenced config keys not found: '.implode(', ', $missing));
     }
 
     private function readAllDocs(): string
@@ -87,11 +87,11 @@ final class DocsCodeReferencesTest extends TestCase
 
         $claudeMd = base_path('CLAUDE.md');
         if (file_exists($claudeMd)) {
-            $content .= file_get_contents($claudeMd) . "\n";
+            $content .= file_get_contents($claudeMd)."\n";
         }
 
         foreach (glob(base_path('documentation/*.md')) as $file) {
-            $content .= file_get_contents($file) . "\n";
+            $content .= file_get_contents($file)."\n";
         }
 
         return $content;

@@ -18,6 +18,7 @@ use Tests\TestCase;
 final class SkillsPayloadTest extends TestCase
 {
     private PayloadBuilder $builder;
+
     private MessageRequestValidator $validator;
 
     protected function setUp(): void
@@ -25,7 +26,7 @@ final class SkillsPayloadTest extends TestCase
         parent::setUp();
 
         $this->builder = new PayloadBuilder(
-            new ModelResolver(),
+            new ModelResolver,
             new FileSourceResolver($this->createMock(FilesRepository::class)),
             config('llm.claude.beta_headers'),
         );
@@ -35,8 +36,9 @@ final class SkillsPayloadTest extends TestCase
 
     private function makeClient(array $features = []): Client
     {
-        $client = new Client();
+        $client = new Client;
         $client->forceFill(['id' => 1, 'name' => 'test', 'api_key_hash' => 'h', 'allowed_features' => $features]);
+
         return $client;
     }
 

@@ -6,8 +6,8 @@ namespace Tests\Feature\Messages;
 
 use App\Components\Auth\KeyGenerator;
 use App\Components\Auth\KeyHasher;
-use App\Models\Client;
 use App\Models\ClaudeWorkspace;
+use App\Models\Client;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use PHPUnit\Framework\Attributes\Test;
@@ -23,7 +23,7 @@ final class AuthErrorsTest extends TestCase
 
         config(['llm.auth.api_key_pepper' => 'test-pepper']);
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $rawKey = $generator->generateRawKey();
         $hasher = new KeyHasher('test-pepper');
 

@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Routing;
 
 use App\Components\Routing\DTO\ModelCapabilities;
-use App\Components\Routing\ModelCapabilitiesFetcher;
 use App\Components\Routing\ModelResolver;
-use Illuminate\Support\Facades\Redis;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -16,7 +14,7 @@ final class ModelCapabilitiesLiveTest extends TestCase
     #[Test]
     public function get_capabilities_offline_returns_config_dto(): void
     {
-        $resolver = new ModelResolver();
+        $resolver = new ModelResolver;
 
         $caps = $resolver->getCapabilities('claude-sonnet', false);
 

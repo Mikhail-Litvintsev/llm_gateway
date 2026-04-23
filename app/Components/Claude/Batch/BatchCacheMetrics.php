@@ -12,8 +12,8 @@ final class BatchCacheMetrics
     private const string SCALE = '1000000';
 
     /**
-     * @param iterable<UsageData> $usageItems
-     * @param array<string, mixed> $pricingTier
+     * @param  iterable<UsageData>  $usageItems
+     * @param  array<string, mixed>  $pricingTier
      */
     public function compute(iterable $usageItems, array $pricingTier): BatchCacheMetricsResult
     {

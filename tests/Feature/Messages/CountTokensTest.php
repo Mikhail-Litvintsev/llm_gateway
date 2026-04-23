@@ -28,7 +28,7 @@ final class CountTokensTest extends TestCase
 
         Http::preventStrayRequests();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -76,7 +76,7 @@ final class CountTokensTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hello world']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -103,7 +103,7 @@ final class CountTokensTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Test']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(200);
 
         $this->assertDatabaseMissing('requests', [
@@ -130,7 +130,7 @@ final class CountTokensTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Test']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(200);
 
         $this->client->refresh();
@@ -155,7 +155,7 @@ final class CountTokensTest extends TestCase
         $response = $this->postJson('/api/v1/messages/count_tokens', [
             'model' => 'claude-sonnet',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -177,7 +177,7 @@ final class CountTokensTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Estimate me']],
             'max_tokens' => 2048,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);

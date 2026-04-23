@@ -16,7 +16,7 @@ final class PtcContractRule
 
         foreach ($tools as $tool) {
             $callers = $tool['allowed_callers'] ?? null;
-            if (!is_array($callers)) {
+            if (! is_array($callers)) {
                 continue;
             }
             if (in_array(ToolTypeCatalog::CODE_EXECUTION, $callers, true)) {
@@ -25,7 +25,7 @@ final class PtcContractRule
             }
         }
 
-        if (!$hasPtcCaller) {
+        if (! $hasPtcCaller) {
             return null;
         }
 

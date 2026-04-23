@@ -7,7 +7,7 @@ namespace App\Components\Delivery\Sync\DTO;
 final readonly class GatewayHeaders
 {
     /**
-     * @param array<string, float> $costBreakdown
+     * @param  array<string, float>  $costBreakdown
      */
     public function __construct(
         public string $gatewayRequestId,

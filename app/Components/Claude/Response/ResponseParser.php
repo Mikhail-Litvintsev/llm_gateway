@@ -38,7 +38,7 @@ final class ResponseParser
         $iterations = $usage['iterations'] ?? [];
         $thinkingTokens = $usage['thinking_tokens'] ?? 0;
 
-        if ($stopReason !== null && !in_array($stopReason, self::KNOWN_STOP_REASONS, true)) {
+        if ($stopReason !== null && ! in_array($stopReason, self::KNOWN_STOP_REASONS, true)) {
             $warnings[] = ['code' => 'parser.unknown_stop_reason', 'message' => "Unknown stop_reason: $stopReason"];
         }
 
@@ -120,7 +120,7 @@ final class ResponseParser
     private function tagMcpToolUses(array $content): array
     {
         foreach ($content as &$block) {
-            if (!is_array($block) || ($block['type'] ?? '') !== 'tool_use') {
+            if (! is_array($block) || ($block['type'] ?? '') !== 'tool_use') {
                 continue;
             }
 
@@ -141,7 +141,7 @@ final class ResponseParser
             return true;
         }
 
-        return !empty($usage['iterations'] ?? []);
+        return ! empty($usage['iterations'] ?? []);
     }
 
     private function collectMemoryToolUses(array $content): array
@@ -149,7 +149,7 @@ final class ResponseParser
         $memoryUses = [];
 
         foreach ($content as $block) {
-            if (!is_array($block)) {
+            if (! is_array($block)) {
                 continue;
             }
             if (($block['type'] ?? '') === 'tool_use' && ToolTypeCatalog::isMemoryTool($block['name'] ?? '')) {
@@ -165,12 +165,12 @@ final class ResponseParser
         $citations = [];
 
         foreach ($content as $block) {
-            if (!is_array($block)) {
+            if (! is_array($block)) {
                 continue;
             }
 
             $type = $block['type'] ?? '';
-            if (!in_array($type, ['text', 'document', 'search_result'], true)) {
+            if (! in_array($type, ['text', 'document', 'search_result'], true)) {
                 continue;
             }
 
@@ -216,17 +216,17 @@ final class ResponseParser
         ];
 
         foreach ($content as $block) {
-            if (!is_array($block)) {
+            if (! is_array($block)) {
                 continue;
             }
 
             $type = $block['type'] ?? '';
 
-            if ($type !== '' && !in_array($type, $knownTypes, true)) {
+            if ($type !== '' && ! in_array($type, $knownTypes, true)) {
                 $warnings[] = ['code' => 'parser.unknown_block_type', 'message' => "Unknown content block type: $type"];
             }
 
-            if ($type === 'thinking' && !isset($block['signature'])) {
+            if ($type === 'thinking' && ! isset($block['signature'])) {
                 $warnings[] = ['code' => 'parser.thinking_missing_signature', 'message' => 'Thinking block missing signature'];
             }
         }

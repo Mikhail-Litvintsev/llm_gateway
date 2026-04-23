@@ -77,14 +77,14 @@ final class DocsFeatureCoverageTest extends TestCase
                     break;
                 }
             }
-            if (!$found) {
+            if (! $found) {
                 $missing[] = $feature;
             }
         }
 
         $this->assertEmpty(
             $missing,
-            "Features missing from $docName:\n" . implode("\n", $missing)
+            "Features missing from $docName:\n".implode("\n", $missing)
         );
     }
 }

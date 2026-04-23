@@ -24,7 +24,7 @@ final class FlushTriggerEvaluatorTest extends TestCase
             'llm.claude.batch.accumulator.trigger_seconds' => 300,
         ]);
 
-        $this->evaluator = new FlushTriggerEvaluator();
+        $this->evaluator = new FlushTriggerEvaluator;
     }
 
     #[Test]
@@ -54,7 +54,7 @@ final class FlushTriggerEvaluatorTest extends TestCase
             'llm.claude.batch.accumulator.trigger_seconds' => 60,
         ]);
 
-        $evaluator = new FlushTriggerEvaluator();
+        $evaluator = new FlushTriggerEvaluator;
 
         $this->assertSame(50, $evaluator->triggerCount());
         $this->assertSame(10 * 1024 * 1024, $evaluator->triggerBytes());
@@ -67,7 +67,7 @@ final class FlushTriggerEvaluatorTest extends TestCase
         $app = $this->app;
         $app['config']->set('llm.claude.batch.accumulator', null);
 
-        $evaluator = new FlushTriggerEvaluator();
+        $evaluator = new FlushTriggerEvaluator;
 
         $this->assertSame(100, $evaluator->triggerCount());
         $this->assertSame(50 * 1024 * 1024, $evaluator->triggerBytes());

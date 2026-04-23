@@ -16,7 +16,7 @@ final class StreamEventParserTest extends TestCase
     {
         parent::setUp();
 
-        $this->parser = new StreamEventParser();
+        $this->parser = new StreamEventParser;
     }
 
     #[Test]

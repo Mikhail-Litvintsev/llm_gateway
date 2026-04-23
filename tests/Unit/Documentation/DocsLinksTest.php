@@ -40,14 +40,14 @@ final class DocsLinksTest extends TestCase
                     continue;
                 }
 
-                $resolved = realpath($dir . '/' . $linkPath);
-                if ($resolved === false || !file_exists($resolved)) {
+                $resolved = realpath($dir.'/'.$linkPath);
+                if ($resolved === false || ! file_exists($resolved)) {
                     $broken[] = "{$label}: broken link [{$link}]";
                 }
             }
         }
 
-        $this->assertEmpty($broken, "Broken links found:\n" . implode("\n", $broken));
+        $this->assertEmpty($broken, "Broken links found:\n".implode("\n", $broken));
     }
 
     /** @return array<string, string> */
@@ -61,7 +61,7 @@ final class DocsLinksTest extends TestCase
         }
 
         foreach (glob(base_path('documentation/*.md')) as $file) {
-            $files['documentation/' . basename($file)] = $file;
+            $files['documentation/'.basename($file)] = $file;
         }
 
         return $files;

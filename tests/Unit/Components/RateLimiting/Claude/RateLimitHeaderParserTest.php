@@ -18,7 +18,7 @@ final class RateLimitHeaderParserTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->parser = new RateLimitHeaderParser();
+        $this->parser = new RateLimitHeaderParser;
     }
 
     #[Test]

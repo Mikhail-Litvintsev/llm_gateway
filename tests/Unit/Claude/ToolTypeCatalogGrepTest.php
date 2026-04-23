@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Claude;
 
 use App\Components\Claude\ToolTypeCatalog;
-use PHPUnit\Framework\Attributes\Test;
 use FilesystemIterator;
+use PHPUnit\Framework\Attributes\Test;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Tests\TestCase;
@@ -63,7 +63,7 @@ final class ToolTypeCatalogGrepTest extends TestCase
 
         $this->assertEmpty(
             $violations,
-            "Magic strings found outside ToolTypeCatalog:\n" . implode("\n", $violations),
+            "Magic strings found outside ToolTypeCatalog:\n".implode("\n", $violations),
         );
     }
 }

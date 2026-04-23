@@ -80,12 +80,12 @@ final class FilesCleanupRunner
     {
         $client = $record->client;
 
-        if (!$client) {
+        if (! $client) {
             return;
         }
 
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.files') . '/' . $record->anthropic_file_id;
+        $endpoint = config('llm.claude.endpoints.files').'/'.$record->anthropic_file_id;
 
         try {
             Http::withHeaders([

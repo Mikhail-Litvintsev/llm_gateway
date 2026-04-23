@@ -33,7 +33,7 @@ final class ShowMessagesTest extends TestCase
 
         Http::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $hasher = $this->app->make(KeyHasher::class);
 
         $workspace = ClaudeWorkspace::create([
@@ -74,12 +74,12 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_request_details(): void
     {
-        $requestId = 'req_' . str_repeat('A', 24);
+        $requestId = 'req_'.str_repeat('A', 24);
 
         $this->seedRequest($requestId, $this->client->id, 'completed');
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -95,13 +95,13 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_billing_when_usage_exists(): void
     {
-        $requestId = 'req_' . str_repeat('B', 24);
+        $requestId = 'req_'.str_repeat('B', 24);
 
         $this->seedRequest($requestId, $this->client->id, 'completed');
         $this->seedUsage($requestId, 0.005);
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -114,13 +114,13 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_anthropic_response_when_raw_exists(): void
     {
-        $requestId = 'req_' . str_repeat('C', 24);
+        $requestId = 'req_'.str_repeat('C', 24);
 
         $this->seedRequest($requestId, $this->client->id, 'completed');
         $this->seedRaw($requestId, '{"sent": true}', '{"id": "msg_123", "type": "message"}');
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -132,10 +132,10 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_404_for_nonexistent_request(): void
     {
-        $requestId = 'req_' . str_repeat('Z', 24);
+        $requestId = 'req_'.str_repeat('Z', 24);
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -147,12 +147,12 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_404_when_request_belongs_to_another_client(): void
     {
-        $requestId = 'req_' . str_repeat('D', 24);
+        $requestId = 'req_'.str_repeat('D', 24);
 
         $this->seedRequest($requestId, $this->otherClient->id, 'completed');
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -164,7 +164,7 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_without_auth_returns_401(): void
     {
-        $requestId = 'req_' . str_repeat('E', 24);
+        $requestId = 'req_'.str_repeat('E', 24);
 
         $response = $this->getJson("/api/v1/messages/{$requestId}");
 
@@ -174,12 +174,12 @@ final class ShowMessagesTest extends TestCase
     #[Test]
     public function show_returns_error_details_when_request_failed(): void
     {
-        $requestId = 'req_' . str_repeat('F', 24);
+        $requestId = 'req_'.str_repeat('F', 24);
 
         $this->seedRequest($requestId, $this->client->id, 'failed_server_error', 'overloaded_error', 'Overloaded');
 
         $response = $this->getJson("/api/v1/messages/{$requestId}", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);

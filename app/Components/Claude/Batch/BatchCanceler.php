@@ -20,7 +20,7 @@ final readonly class BatchCanceler
 
     public function cancel(BatchRecord $batch): Batch
     {
-        if (!in_array($batch->status, [BatchStatus::InProgress, BatchStatus::Submitting], true)) {
+        if (! in_array($batch->status, [BatchStatus::InProgress, BatchStatus::Submitting], true)) {
             abort(response()->json([
                 'type' => 'error',
                 'error' => ['type' => 'cannot_cancel_in_terminal_state', 'message' => 'Batch cannot be cancelled in its current state'],
@@ -38,7 +38,7 @@ final readonly class BatchCanceler
 
         $client = $batch->client;
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $batch->anthropic_batch_id . '/cancel';
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id.'/cancel';
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,

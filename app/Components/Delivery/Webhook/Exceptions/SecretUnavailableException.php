@@ -6,6 +6,4 @@ namespace App\Components\Delivery\Webhook\Exceptions;
 
 use RuntimeException;
 
-final class SecretUnavailableException extends RuntimeException
-{
-}
+final class SecretUnavailableException extends RuntimeException {}

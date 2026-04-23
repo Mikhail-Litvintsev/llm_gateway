@@ -29,7 +29,7 @@ final class FilesUploadTest extends TestCase
     {
         parent::setUp();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -72,7 +72,7 @@ final class FilesUploadTest extends TestCase
             'file' => $file,
             'purpose' => 'document',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(201);
@@ -113,7 +113,7 @@ final class FilesUploadTest extends TestCase
             'file' => $file,
             'purpose' => 'vision',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(201);
@@ -135,7 +135,7 @@ final class FilesUploadTest extends TestCase
         $response = $this->post('/api/v1/files', [
             'purpose' => 'document',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -159,7 +159,7 @@ final class FilesUploadTest extends TestCase
         $response = $this->post('/api/v1/files', [
             'file' => $file,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -184,7 +184,7 @@ final class FilesUploadTest extends TestCase
             'file' => $file,
             'purpose' => 'vision',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -214,7 +214,7 @@ final class FilesUploadTest extends TestCase
             'file' => $file,
             'purpose' => 'document',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(401);

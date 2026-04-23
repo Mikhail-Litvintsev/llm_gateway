@@ -20,7 +20,7 @@ final class BatchCacheMetricsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->metrics = new BatchCacheMetrics();
+        $this->metrics = new BatchCacheMetrics;
         $this->sonnetPricing = [
             'input' => 3.00,
             'output' => 15.00,

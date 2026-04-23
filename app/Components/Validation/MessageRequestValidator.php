@@ -199,12 +199,14 @@ class MessageRequestValidator
         $serviceTier = ServiceTier::tryFrom($serviceTierRaw);
         if ($serviceTier === null) {
             $errors[] = new ValidationError('/service_tier', 'service_tier_invalid', "Invalid service_tier value: '$serviceTierRaw'");
+
             return;
         }
         if ($serviceTier === ServiceTier::Auto) {
             $allowedFeatures = $client->allowed_features ?? [];
-            if (!($allowedFeatures['priority_tier'] ?? false)) {
+            if (! ($allowedFeatures['priority_tier'] ?? false)) {
                 $errors[] = new ValidationError('/service_tier', 'priority_tier_not_enabled', 'Priority Tier feature is not enabled for this client');
+
                 return;
             }
         }
@@ -212,8 +214,9 @@ class MessageRequestValidator
         $inferenceGeo = $payload['inference_geo'] ?? $client->inference_geo ?? null;
         if ($inferenceGeo !== null) {
             $allowed = config('llm.claude.inference_geo.allowed', []);
-            if (!in_array($inferenceGeo, $allowed, true)) {
+            if (! in_array($inferenceGeo, $allowed, true)) {
                 $errors[] = new ValidationError('/inference_geo', 'inference_geo_invalid', "Invalid inference_geo value: '$inferenceGeo'");
+
                 return;
             }
         }
@@ -223,80 +226,92 @@ class MessageRequestValidator
             $speed = Speed::tryFrom($speedRaw);
             if ($speed === null) {
                 $errors[] = new ValidationError('/speed', 'speed_invalid', "Invalid speed value: '$speedRaw'");
+
                 return;
             }
             if ($speed === Speed::Fast) {
                 $allowedFeatures = $client->allowed_features ?? [];
-                if (!($allowedFeatures['fast_mode'] ?? false)) {
+                if (! ($allowedFeatures['fast_mode'] ?? false)) {
                     $errors[] = new ValidationError('/speed', 'fast_mode_not_enabled', 'Fast mode is not enabled for this client');
+
                     return;
                 }
                 $modelAlias = $payload['model'] ?? '';
                 $capabilities = config("llm.claude.model_capabilities.$modelAlias", []);
-                if (!($capabilities['supports_fast_mode'] ?? false)) {
+                if (! ($capabilities['supports_fast_mode'] ?? false)) {
                     $errors[] = new ValidationError('/speed', 'fast_mode_model_unsupported', "Fast mode is not supported on model $modelAlias");
+
                     return;
                 }
                 if ($ctx === ValidationContext::BatchItem) {
                     $errors[] = new ValidationError('/speed', 'fast_mode_batch_incompatible', 'Fast mode is incompatible with Batch API');
+
                     return;
                 }
                 if ($serviceTier === ServiceTier::Auto) {
                     $errors[] = new ValidationError('/speed', 'fast_mode_priority_incompatible', 'Fast mode is incompatible with priority service tier');
+
                     return;
                 }
             }
         }
 
-        if (!empty($payload['mcp_servers'])) {
+        if (! empty($payload['mcp_servers'])) {
             $allowedFeatures = $client->allowed_features ?? [];
-            if (!($allowedFeatures['mcp_connector'] ?? false)) {
+            if (! ($allowedFeatures['mcp_connector'] ?? false)) {
                 $errors[] = new ValidationError('/mcp_servers', 'mcp_connector_not_enabled', 'MCP connector is not enabled for this client');
+
                 return;
             }
         }
 
-        if (!empty($payload['skills'])) {
+        if (! empty($payload['skills'])) {
             $allowedFeatures = $client->allowed_features ?? [];
-            if (!($allowedFeatures['skills'] ?? false)) {
+            if (! ($allowedFeatures['skills'] ?? false)) {
                 $errors[] = new ValidationError('/skills', 'skills_not_enabled', 'Skills feature is not enabled for this client');
+
                 return;
             }
             $hasCodeExecution = array_any(
                 $payload['tools'] ?? [],
                 static fn (mixed $tool): bool => is_string($tool['type'] ?? null) && str_starts_with($tool['type'], 'code_execution'),
             );
-            if (!$hasCodeExecution) {
+            if (! $hasCodeExecution) {
                 $errors[] = new ValidationError('/skills', 'skills_require_code_execution', 'Skills require code_execution tool to be present in the request');
+
                 return;
             }
         }
 
-        $memoryGate = (new MemoryModelGateRule())->check($payload);
+        $memoryGate = (new MemoryModelGateRule)->check($payload);
         if ($memoryGate !== null) {
             $errors[] = $memoryGate;
+
             return;
         }
 
-        $searchResult = (new SearchResultBlockRule())->check($payload);
+        $searchResult = (new SearchResultBlockRule)->check($payload);
         if ($searchResult !== null) {
             $errors[] = $searchResult;
+
             return;
         }
 
-        $citations = (new CitationsConsistencyRule())->check($payload);
+        $citations = (new CitationsConsistencyRule)->check($payload);
         if ($citations !== null) {
             $errors[] = $citations;
+
             return;
         }
 
-        $thinking = (new ThinkingCompatibilityRule())->check($payload);
+        $thinking = (new ThinkingCompatibilityRule)->check($payload);
         if ($thinking !== null) {
             $errors[] = $thinking;
+
             return;
         }
 
-        $ptc = (new PtcContractRule())->check($payload);
+        $ptc = (new PtcContractRule)->check($payload);
         if ($ptc !== null) {
             $errors[] = $ptc;
         }

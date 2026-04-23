@@ -21,14 +21,14 @@ final class FileSourceResolver
     ) {}
 
     /**
-     * @param array{type: string, file_id: string} $source
+     * @param  array{type: string, file_id: string}  $source
      * @return array{type: string, file_id: string}
      */
     public function resolve(array $source, int $clientId, bool $allowRawAnthropicFileIds): array
     {
         $fileId = $source['file_id'];
 
-        if (!$this->isOurFileId($fileId)) {
+        if (! $this->isOurFileId($fileId)) {
             return $this->handleExternalFileId($source, $allowRawAnthropicFileIds);
         }
 
@@ -46,7 +46,7 @@ final class FileSourceResolver
      */
     private function handleExternalFileId(array $source, bool $allowRawAnthropicFileIds): array
     {
-        if (!$allowRawAnthropicFileIds) {
+        if (! $allowRawAnthropicFileIds) {
             throw PayloadBuildException::invalidRequest(
                 'Unknown file ID format. Use gateway file IDs or enable allow_raw_anthropic_file_ids.'
             );

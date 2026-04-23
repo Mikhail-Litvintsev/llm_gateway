@@ -77,7 +77,7 @@ final readonly class MemoryHandler
 
         $numbered = [];
         foreach ($lines as $i => $line) {
-            $numbered[] = ($lineOffset + $i) . ": $line";
+            $numbered[] = ($lineOffset + $i).": $line";
         }
 
         return implode("\n", $numbered);
@@ -150,7 +150,7 @@ final readonly class MemoryHandler
             $lines = explode("\n", $file->content);
 
             if ($insertLine < 0 || $insertLine > count($lines)) {
-                throw new MemoryPathException("insert_line $insertLine out of range for $path (0.." . count($lines) . ')');
+                throw new MemoryPathException("insert_line $insertLine out of range for $path (0..".count($lines).')');
             }
 
             array_splice($lines, $insertLine, 0, [$insertText]);
@@ -177,7 +177,7 @@ final readonly class MemoryHandler
                 throw new MemoryFileNotFoundException("Not found: $path");
             }
 
-            $isDir = $deleted > 1 || !str_contains(basename($path), '.');
+            $isDir = $deleted > 1 || ! str_contains(basename($path), '.');
 
             return $isDir ? "Directory deleted: $path" : "File deleted: $path";
         });

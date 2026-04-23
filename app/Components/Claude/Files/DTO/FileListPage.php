@@ -9,7 +9,7 @@ use App\Components\Claude\DTO\ClaudeFile;
 final readonly class FileListPage
 {
     /**
-     * @param ClaudeFile[] $files
+     * @param  ClaudeFile[]  $files
      */
     public function __construct(
         public array $files,

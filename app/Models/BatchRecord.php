@@ -8,6 +8,7 @@ use App\Components\Claude\Enums\BatchStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -29,13 +30,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total_cache_read_tokens
  * @property int $total_input_tokens
  * @property int $total_output_tokens
- * @property ?\Illuminate\Support\Carbon $submitted_at
- * @property ?\Illuminate\Support\Carbon $completed_at
- * @property ?\Illuminate\Support\Carbon $last_polled_at
+ * @property ?Carbon $submitted_at
+ * @property ?Carbon $completed_at
+ * @property ?Carbon $last_polled_at
  * @property int $poll_attempts
  * @property ?string $results_url
- * @property ?\Illuminate\Support\Carbon $created_at
- * @property ?\Illuminate\Support\Carbon $updated_at
+ * @property ?Carbon $created_at
+ * @property ?Carbon $updated_at
  */
 class BatchRecord extends Model
 {

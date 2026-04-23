@@ -24,10 +24,11 @@ final class ClientRotateSecret extends Command
 
         if (! $client) {
             $this->error('Client not found.');
+
             return self::FAILURE;
         }
 
-        $plainSecret = 'whsec_' . bin2hex(random_bytes(32));
+        $plainSecret = 'whsec_'.bin2hex(random_bytes(32));
         $encryptedSecret = Crypt::encryptString($plainSecret);
 
         DB::transaction(function () use ($client, $encryptedSecret): void {

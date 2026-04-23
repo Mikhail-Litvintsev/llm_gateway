@@ -13,9 +13,9 @@ use App\Models\BatchRecord;
 use App\Models\ClaudeWorkspace;
 use App\Models\Client;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -35,7 +35,7 @@ final class BatchesManagementTest extends TestCase
 
         Http::preventStrayRequests();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -66,7 +66,7 @@ final class BatchesManagementTest extends TestCase
         $batch = $this->createBatch(BatchStatus::InProgress);
 
         $response = $this->getJson("/api/v1/batches/$batch->batch_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -83,7 +83,7 @@ final class BatchesManagementTest extends TestCase
         $batch = $this->createBatch(BatchStatus::InProgress);
 
         $response = $this->getJson("/api/v1/batches/$batch->batch_id/results", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(409);
@@ -116,7 +116,7 @@ final class BatchesManagementTest extends TestCase
         ]);
 
         $response = $this->getJson("/api/v1/batches/$batch->batch_id/results", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -138,7 +138,7 @@ final class BatchesManagementTest extends TestCase
         }
 
         $response = $this->getJson('/api/v1/batches?limit=2', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -147,8 +147,8 @@ final class BatchesManagementTest extends TestCase
         $this->assertCount(2, $body['batches']);
         $this->assertNotNull($body['next_cursor']);
 
-        $nextResponse = $this->getJson('/api/v1/batches?limit=2&cursor=' . $body['next_cursor'], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+        $nextResponse = $this->getJson('/api/v1/batches?limit=2&cursor='.$body['next_cursor'], [
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $nextResponse->assertStatus(200);
@@ -167,7 +167,7 @@ final class BatchesManagementTest extends TestCase
         $batch = $this->createBatch(BatchStatus::Ended, 'msgbatch_test123');
 
         $response = $this->deleteJson("/api/v1/batches/$batch->batch_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(204);
@@ -186,7 +186,7 @@ final class BatchesManagementTest extends TestCase
         $batch = $this->createBatch(BatchStatus::InProgress);
 
         $response = $this->deleteJson("/api/v1/batches/$batch->batch_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(409);
@@ -200,7 +200,7 @@ final class BatchesManagementTest extends TestCase
     public function show_nonexistent_batch_returns_404(): void
     {
         $response = $this->getJson('/api/v1/batches/bat_000000000000000000000000', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -208,9 +208,9 @@ final class BatchesManagementTest extends TestCase
 
     private function createBatch(BatchStatus $status, ?string $anthropicBatchId = null): BatchRecord
     {
-        $batchId = 'bat_' . Str::random(24);
+        $batchId = 'bat_'.Str::random(24);
 
-        $record = new BatchRecord();
+        $record = new BatchRecord;
         $record->batch_id = $batchId;
         $record->client_id = $this->client->id;
         $record->status = $status;

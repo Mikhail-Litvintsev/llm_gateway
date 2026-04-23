@@ -16,11 +16,11 @@ final class Authorization
     ];
 
     /**
-     * @param  Client  $client        Hydrated Client model (no DB queries issued).
-     * @param  string  $modelAlias    Resolved model alias (e.g. "claude-sonnet-4-6").
+     * @param  Client  $client  Hydrated Client model (no DB queries issued).
+     * @param  string  $modelAlias  Resolved model alias (e.g. "claude-sonnet-4-6").
      * @param  array<int, string>  $featuresUsed  Flat list of feature keys extracted from the validated payload.
-     *         Valid keys: thinking, web_search, code_execution, computer_use, bash, text_editor,
-     *         priority_tier, citations, prompt_caching, structured_outputs, batch.
+     *                                            Valid keys: thinking, web_search, code_execution, computer_use, bash, text_editor,
+     *                                            priority_tier, citations, prompt_caching, structured_outputs, batch.
      */
     public function authorize(
         Client $client,
@@ -30,12 +30,12 @@ final class Authorization
         $allowedFeatures = $client->allowed_features ?? [];
 
         $modelCheck = $this->checkModelWhitelist($allowedFeatures, $modelAlias);
-        if (!$modelCheck->allowed) {
+        if (! $modelCheck->allowed) {
             return $modelCheck;
         }
 
         $featureCheck = $this->checkFeatureWhitelist($allowedFeatures, $featuresUsed);
-        if (!$featureCheck->allowed) {
+        if (! $featureCheck->allowed) {
             return $featureCheck;
         }
 
@@ -50,7 +50,7 @@ final class Authorization
             return AuthorizationResult::allow();
         }
 
-        if (!in_array($modelAlias, $models, true)) {
+        if (! in_array($modelAlias, $models, true)) {
             return AuthorizationResult::deny(
                 reason: AuthorizationDenialReason::ModelNotAllowed,
                 message: "Model '$modelAlias' is not allowed for this API key.",
@@ -63,7 +63,7 @@ final class Authorization
     private function checkFeatureWhitelist(array $allowedFeatures, array $featuresUsed): AuthorizationResult
     {
         foreach ($featuresUsed as $feature) {
-            if (!$this->isFeatureAllowed($allowedFeatures, $feature)) {
+            if (! $this->isFeatureAllowed($allowedFeatures, $feature)) {
                 return AuthorizationResult::deny(
                     reason: AuthorizationDenialReason::FeatureNotAllowed,
                     message: "Feature '$feature' is not allowed for this API key.",

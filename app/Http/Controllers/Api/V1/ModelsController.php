@@ -139,7 +139,7 @@ final class ModelsController extends Controller
                     'anthropic-version' => config('llm.claude.anthropic_version'),
                 ])
                     ->timeout(3)
-                    ->get(rtrim(config('llm.claude.endpoints.models'), '/') . '/' . $snapshot);
+                    ->get(rtrim(config('llm.claude.endpoints.models'), '/').'/'.$snapshot);
 
                 return $response->successful() ? $response->json() : null;
             } catch (Throwable) {

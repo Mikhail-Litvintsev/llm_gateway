@@ -16,7 +16,7 @@ final class CompactionHandlerTest extends TestCase
     {
         parent::setUp();
 
-        $this->parser = new ResponseParser();
+        $this->parser = new ResponseParser;
     }
 
     #[Test]

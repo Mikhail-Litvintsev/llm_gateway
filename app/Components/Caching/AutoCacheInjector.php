@@ -11,10 +11,7 @@ use App\Models\Client;
 class AutoCacheInjector
 {
     /**
-     * @param array<string, mixed> $payload
-     * @param string $modelAlias
-     * @param Client $client
-     * @return CacheInjectionResult
+     * @param  array<string, mixed>  $payload
      */
     public function inject(array $payload, string $modelAlias, Client $client): CacheInjectionResult
     {
@@ -86,7 +83,7 @@ class AutoCacheInjector
 
         foreach ($payload['messages'] ?? [] as $message) {
             $content = $message['content'] ?? [];
-            if (!is_array($content)) {
+            if (! is_array($content)) {
                 continue;
             }
             if (array_any($content, fn (mixed $block): bool => is_array($block) && array_key_exists('cache_control', $block))) {
@@ -114,7 +111,7 @@ class AutoCacheInjector
             return mb_strlen($system);
         }
 
-        if (!is_array($system)) {
+        if (! is_array($system)) {
             return 0;
         }
 
@@ -191,7 +188,7 @@ class AutoCacheInjector
     }
 
     /**
-     * @param array<string, mixed> $itemPayload
+     * @param  array<string, mixed>  $itemPayload
      * @return array<string, mixed>
      */
     public function injectForBatchItem(array $itemPayload, string $resolvedModel, bool $autoUse1hCache): array
@@ -217,7 +214,7 @@ class AutoCacheInjector
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function applyCacheControlToSystem(array $payload, string $ttl): array
@@ -264,7 +261,7 @@ class AutoCacheInjector
 
         foreach ($payload['messages'] ?? [] as $message) {
             $content = $message['content'] ?? [];
-            if (!is_array($content)) {
+            if (! is_array($content)) {
                 continue;
             }
             foreach ($content as $block) {

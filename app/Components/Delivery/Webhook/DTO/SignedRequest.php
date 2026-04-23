@@ -7,7 +7,7 @@ namespace App\Components\Delivery\Webhook\DTO;
 final readonly class SignedRequest
 {
     /**
-     * @param array<string, string> $headers
+     * @param  array<string, string>  $headers
      */
     public function __construct(
         public string $body,

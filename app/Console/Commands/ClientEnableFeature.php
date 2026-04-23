@@ -36,7 +36,8 @@ final class ClientEnableFeature extends Command
 
         if (! in_array($feature, self::KNOWN_FEATURES, true)) {
             $this->error("Unknown feature: {$feature}");
-            $this->error('Known features: ' . implode(', ', self::KNOWN_FEATURES));
+            $this->error('Known features: '.implode(', ', self::KNOWN_FEATURES));
+
             return self::FAILURE;
         }
 
@@ -44,6 +45,7 @@ final class ClientEnableFeature extends Command
 
         if (! $client) {
             $this->error('Client not found.');
+
             return self::FAILURE;
         }
 

@@ -21,7 +21,7 @@ final class SignerTest extends TestCase
     {
         parent::setUp();
 
-        $this->signer = new Signer();
+        $this->signer = new Signer;
     }
 
     #[Test]
@@ -139,13 +139,13 @@ final class SignerTest extends TestCase
 
         $body = '{"test":"data"}';
         $timestamp = (string) time();
-        $mac = hash_hmac('sha256', $timestamp . '.' . $body, $oldSecret);
+        $mac = hash_hmac('sha256', $timestamp.'.'.$body, $oldSecret);
 
         $this->assertTrue($this->signer->verify(
             $client,
             $body,
             $timestamp,
-            'sha256=' . $mac,
+            'sha256='.$mac,
         ));
     }
 
@@ -165,13 +165,13 @@ final class SignerTest extends TestCase
 
         $body = '{"test":"data"}';
         $timestamp = (string) time();
-        $mac = hash_hmac('sha256', $timestamp . '.' . $body, $oldSecret);
+        $mac = hash_hmac('sha256', $timestamp.'.'.$body, $oldSecret);
 
         $this->assertFalse($this->signer->verify(
             $client,
             $body,
             $timestamp,
-            'sha256=' . $mac,
+            'sha256='.$mac,
         ));
     }
 
@@ -188,13 +188,13 @@ final class SignerTest extends TestCase
 
         $body = '{"test":"data"}';
         $timestamp = (string) time();
-        $mac = hash_hmac('sha256', $timestamp . '.' . $body, $oldSecret);
+        $mac = hash_hmac('sha256', $timestamp.'.'.$body, $oldSecret);
 
         $this->assertFalse($this->signer->verify(
             $client,
             $body,
             $timestamp,
-            'sha256=' . $mac,
+            'sha256='.$mac,
         ));
     }
 
@@ -203,7 +203,7 @@ final class SignerTest extends TestCase
         ?string $previousSecret = null,
         mixed $rotatedAt = null,
     ): Client {
-        $client = new Client();
+        $client = new Client;
         $client->id = 1;
         $client->signing_secret_current_encrypted = $currentSecret
             ? Crypt::encryptString($currentSecret)

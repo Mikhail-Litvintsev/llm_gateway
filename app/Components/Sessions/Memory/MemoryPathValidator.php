@@ -26,7 +26,7 @@ final class MemoryPathValidator
             throw new MemoryPathException('Percent-encoding not allowed in path');
         }
 
-        if (!str_starts_with($raw, '/memories')) {
+        if (! str_starts_with($raw, '/memories')) {
             throw new MemoryPathException('Path must start with /memories');
         }
 
@@ -41,14 +41,14 @@ final class MemoryPathValidator
         $path = rtrim($raw, '/');
 
         if ($path === '/memories') {
-            if (!$allowRoot) {
+            if (! $allowRoot) {
                 throw new MemoryPathException('Path must point to a file or subdirectory');
             }
 
             return '/memories';
         }
 
-        if (!preg_match('~\A/memories(/[A-Za-z0-9._-]+)+\z~', $path)) {
+        if (! preg_match('~\A/memories(/[A-Za-z0-9._-]+)+\z~', $path)) {
             $afterMemories = substr($path, strlen('/memories'));
 
             if (str_contains($afterMemories, '//')) {

@@ -53,11 +53,11 @@ final class CitationsConsistencyRule
 
         foreach ($payload['messages'] ?? [] as $message) {
             $content = $message['content'] ?? [];
-            if (!is_array($content)) {
+            if (! is_array($content)) {
                 continue;
             }
             foreach ($content as $block) {
-                if (!is_array($block)) {
+                if (! is_array($block)) {
                     continue;
                 }
                 $type = $block['type'] ?? '';

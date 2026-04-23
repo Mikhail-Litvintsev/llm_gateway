@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Components\Auth\KeyHasher;
 use App\Components\Claude\Beta\BetaHeaderRegistry;
+use App\Components\Claude\Payload\FileSourceResolver;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Pricing\CostCalculator;
+use App\Components\Routing\ModelResolver;
 use App\Components\Sessions\Contracts\SessionsContract;
 use App\Components\Sessions\Contracts\SessionStoreContract;
 use App\Components\Sessions\Sessions;
@@ -15,6 +17,7 @@ use App\Components\Skills\EloquentSkillsRepository;
 use App\Components\Usage\UsageReportFetcher;
 use App\Components\Validation\MessageRequestValidator;
 use App\Components\Validation\Rules\ServerFeaturesRule;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\ServiceProvider;
 use Opis\JsonSchema\Validator;
 
@@ -35,14 +38,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SkillsRepository::class, EloquentSkillsRepository::class);
 
         $this->app->singleton(UsageReportFetcher::class, fn () => new UsageReportFetcher(
-            $this->app->make(\Illuminate\Http\Client\Factory::class),
+            $this->app->make(Factory::class),
             (string) config('llm.claude.admin_api_key', ''),
             (string) config('llm.claude.endpoints.usage_report'),
         ));
 
         $this->app->singleton(PayloadBuilder::class, fn () => new PayloadBuilder(
-            $this->app->make(\App\Components\Routing\ModelResolver::class),
-            $this->app->make(\App\Components\Claude\Payload\FileSourceResolver::class),
+            $this->app->make(ModelResolver::class),
+            $this->app->make(FileSourceResolver::class),
             config('llm.claude.beta_headers'),
         ));
 

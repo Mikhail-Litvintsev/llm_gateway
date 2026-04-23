@@ -24,7 +24,7 @@ final readonly class ModelCapabilitiesFetcher
                 'anthropic-version' => config('llm.claude.anthropic_version'),
             ])
             ->timeout(10)
-            ->get(config('llm.claude.endpoints.models') . '/' . $snapshot);
+            ->get(config('llm.claude.endpoints.models').'/'.$snapshot);
 
         $response->throw();
 

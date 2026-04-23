@@ -34,6 +34,7 @@ final class CostEstimator
 
             if (is_string($content)) {
                 $chars += mb_strlen($content);
+
                 continue;
             }
 

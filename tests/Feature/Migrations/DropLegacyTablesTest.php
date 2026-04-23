@@ -97,7 +97,7 @@ final class DropLegacyTablesTest extends TestCase
     public function legacy_migration_files_removed(): void
     {
         $legacyFiles = glob(database_path('migrations/2024_01_01_*.php'));
-        $this->assertEmpty($legacyFiles, 'Legacy 2024 migration files still exist: ' . implode(', ', $legacyFiles ?: []));
+        $this->assertEmpty($legacyFiles, 'Legacy 2024 migration files still exist: '.implode(', ', $legacyFiles ?: []));
 
         $jobsFile = glob(database_path('migrations/2026_04_02_*_create_jobs_table.php'));
         $this->assertEmpty($jobsFile, 'Legacy create_jobs_table migration still exists');

@@ -20,11 +20,11 @@ final readonly class McpServerConfig
             throw new InvalidArgumentException("MCP server type must be 'url', got '$this->type'");
         }
 
-        if (!str_starts_with($this->url, 'https://')) {
+        if (! str_starts_with($this->url, 'https://')) {
             throw new InvalidArgumentException("MCP server URL must use HTTPS: $this->url");
         }
 
-        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $this->name)) {
+        if (! preg_match('/^[a-zA-Z0-9_-]+$/', $this->name)) {
             throw new InvalidArgumentException("MCP server name must match ^[a-zA-Z0-9_-]+\$: $this->name");
         }
     }

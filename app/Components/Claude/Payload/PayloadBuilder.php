@@ -29,18 +29,18 @@ final class PayloadBuilder
     ) {}
 
     /**
-     * @param array<string, mixed> $validatedPayload Already validated by MessageRequestValidator
+     * @param  array<string, mixed>  $validatedPayload  Already validated by MessageRequestValidator
      *
      * @throws PayloadBuildException On build-time rule violations:
-     *   1. max_tokens exceeds model max_output
-     *   2. Prefill incompatibility (assistant last message on unsupported model)
-     *   3. Thinking type validation (enabled/adaptive support)
-     *   4. top_p must be >= 0.95 when thinking is enabled
-     *   5. Temperature and thinking are mutually exclusive
-     *   6. Citations and structured output are mutually exclusive
-     *   7. Payload size exceeds 32MB
-     *   8. Service tier permission check
-     *   9. Inference geo permission check
+     *                               1. max_tokens exceeds model max_output
+     *                               2. Prefill incompatibility (assistant last message on unsupported model)
+     *                               3. Thinking type validation (enabled/adaptive support)
+     *                               4. top_p must be >= 0.95 when thinking is enabled
+     *                               5. Temperature and thinking are mutually exclusive
+     *                               6. Citations and structured output are mutually exclusive
+     *                               7. Payload size exceeds 32MB
+     *                               8. Service tier permission check
+     *                               9. Inference geo permission check
      */
     public function build(
         array $validatedPayload,
@@ -73,18 +73,18 @@ final class PayloadBuilder
 
         $serverToolTypes = [];
         $hasPtcTool = false;
-        if (!empty($payload['tools'])) {
+        if (! empty($payload['tools'])) {
             [$payload['tools'], $serverToolTypes, $hasPtcTool] = $this->normaliseTools($payload['tools']);
         }
 
-        if ($hasPtcTool && !empty($validatedPayload['disable_parallel_tool_use'])) {
+        if ($hasPtcTool && ! empty($validatedPayload['disable_parallel_tool_use'])) {
             throw PayloadBuildException::invalidRequest('PTC is incompatible with disable_parallel_tool_use');
         }
 
         $contextManagement ??= ContextManagementConfig::fromArray($validatedPayload['context_management'] ?? null);
         $contextEdits = [];
 
-        if (!$contextManagement->isEmpty()) {
+        if (! $contextManagement->isEmpty()) {
             $contextEdits = $this->assembleContextManagementEdits($contextManagement, $capabilities, $alias);
             $payload['context_management'] = ['edits' => $contextEdits];
         }
@@ -144,7 +144,7 @@ final class PayloadBuilder
 
         $lastMessage = end($messages);
 
-        if (($lastMessage['role'] ?? '') === 'assistant' && !($capabilities['supports_prefill'] ?? true)) {
+        if (($lastMessage['role'] ?? '') === 'assistant' && ! ($capabilities['supports_prefill'] ?? true)) {
             throw PayloadBuildException::invalidRequest(
                 "Model $alias does not support assistant prefill"
             );
@@ -158,7 +158,7 @@ final class PayloadBuilder
         string $alias,
         array &$warnings,
     ): void {
-        if (!$spec->isEnabled()) {
+        if (! $spec->isEnabled()) {
             return;
         }
 
@@ -173,12 +173,12 @@ final class PayloadBuilder
 
     private function validateAdaptiveThinking(ThinkingSpec $spec, array $capabilities, string $alias): void
     {
-        if (!($capabilities['supports_adaptive_thinking'] ?? false)) {
+        if (! ($capabilities['supports_adaptive_thinking'] ?? false)) {
             throw PayloadBuildException::invalidRequest("Adaptive thinking not supported on $alias");
         }
 
         $effort = $spec->effort ?? config('llm.claude.adaptive_thinking.default_effort', 'medium');
-        if (!in_array($effort, ['low', 'medium', 'high'], true)) {
+        if (! in_array($effort, ['low', 'medium', 'high'], true)) {
             throw PayloadBuildException::invalidRequest("Invalid thinking effort: '$effort' — must be low, medium, or high");
         }
     }
@@ -190,7 +190,7 @@ final class PayloadBuilder
         string $alias,
         array &$warnings,
     ): void {
-        if (!($capabilities['supports_thinking'] ?? false)) {
+        if (! ($capabilities['supports_thinking'] ?? false)) {
             throw PayloadBuildException::invalidRequest("$alias does not support extended thinking");
         }
 
@@ -199,7 +199,7 @@ final class PayloadBuilder
             throw PayloadBuildException::invalidRequest('budget_tokens must be greater than 0');
         }
 
-        $requiresBelowMax = !($capabilities['supports_adaptive_thinking'] ?? false);
+        $requiresBelowMax = ! ($capabilities['supports_adaptive_thinking'] ?? false);
         $maxTokens = $payload['max_tokens'] ?? null;
 
         if ($requiresBelowMax && $budget !== null && $maxTokens !== null && $budget >= $maxTokens) {
@@ -220,7 +220,7 @@ final class PayloadBuilder
     {
         if (isset($payload['tool_choice'])) {
             $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'] ?? null;
-            if (!in_array($tcType, ['auto', 'none'], true)) {
+            if (! in_array($tcType, ['auto', 'none'], true)) {
                 throw PayloadBuildException::invalidRequest(
                     "tool_choice must be 'auto' or 'none' when thinking is enabled"
                 );
@@ -274,7 +274,7 @@ final class PayloadBuilder
 
         $allowedFeatures = $client->allowed_features ?? [];
 
-        if (!($allowedFeatures['priority_tier'] ?? false)) {
+        if (! ($allowedFeatures['priority_tier'] ?? false)) {
             throw PayloadBuildException::permissionError(
                 'Client is not authorized to use priority service tier'
             );
@@ -292,7 +292,7 @@ final class PayloadBuilder
         $clientGeo = $client->inference_geo ?? null;
         $allowedFeatures = $client->allowed_features ?? [];
 
-        if ($clientGeo !== $inferenceGeo && !($allowedFeatures['inference_geo_override'] ?? false)) {
+        if ($clientGeo !== $inferenceGeo && ! ($allowedFeatures['inference_geo_override'] ?? false)) {
             throw PayloadBuildException::invalidRequest(
                 "Inference geo '$inferenceGeo' is not allowed for this client"
             );
@@ -312,12 +312,12 @@ final class PayloadBuilder
     {
         foreach ($messages as &$message) {
             $content = $message['content'] ?? [];
-            if (!is_array($content)) {
+            if (! is_array($content)) {
                 continue;
             }
 
             foreach ($content as &$block) {
-                if (!is_array($block) || ($block['type'] ?? '') !== 'search_result') {
+                if (! is_array($block) || ($block['type'] ?? '') !== 'search_result') {
                     continue;
                 }
                 $block = $this->normaliseSearchResultBlock($block);
@@ -334,12 +334,12 @@ final class PayloadBuilder
 
         if ($unknown !== []) {
             throw PayloadBuildException::invalidRequest(
-                'Unknown key on search_result block: ' . reset($unknown)
+                'Unknown key on search_result block: '.reset($unknown)
             );
         }
 
         foreach (['title', 'source', 'content'] as $required) {
-            if (!isset($block[$required])) {
+            if (! isset($block[$required])) {
                 throw PayloadBuildException::invalidRequest(
                     "search_result block missing required key: $required"
                 );
@@ -347,14 +347,14 @@ final class PayloadBuilder
         }
 
         foreach ($block['content'] as $inner) {
-            if (!is_array($inner) || ($inner['type'] ?? '') !== 'text') {
+            if (! is_array($inner) || ($inner['type'] ?? '') !== 'text') {
                 throw PayloadBuildException::invalidRequest(
                     'search_result.content only accepts text blocks'
                 );
             }
         }
 
-        if (isset($block['citations']) && (!is_array($block['citations']) || !array_key_exists('enabled', $block['citations']))) {
+        if (isset($block['citations']) && (! is_array($block['citations']) || ! array_key_exists('enabled', $block['citations']))) {
             throw PayloadBuildException::invalidRequest(
                 'search_result: citations must be {enabled: bool}'
             );
@@ -371,12 +371,12 @@ final class PayloadBuilder
         foreach ($messages as &$message) {
             $content = $message['content'] ?? [];
 
-            if (!is_array($content)) {
+            if (! is_array($content)) {
                 continue;
             }
 
             foreach ($content as &$block) {
-                if (!is_array($block)) {
+                if (! is_array($block)) {
                     continue;
                 }
 
@@ -405,7 +405,7 @@ final class PayloadBuilder
             $payload['system'] = $input['system'];
         }
 
-        if (isset($input['temperature']) && !isset($input['thinking'])) {
+        if (isset($input['temperature']) && ! isset($input['thinking'])) {
             $payload['temperature'] = $input['temperature'];
         }
 
@@ -417,11 +417,11 @@ final class PayloadBuilder
             $payload['top_k'] = $input['top_k'];
         }
 
-        if (!empty($input['stop_sequences'])) {
+        if (! empty($input['stop_sequences'])) {
             $payload['stop_sequences'] = $input['stop_sequences'];
         }
 
-        if (!empty($input['tools'])) {
+        if (! empty($input['tools'])) {
             $payload['tools'] = $input['tools'];
         }
 
@@ -457,15 +457,15 @@ final class PayloadBuilder
             $payload['speed'] = $input['speed'];
         }
 
-        if (!empty($input['skills'])) {
+        if (! empty($input['skills'])) {
             $payload['skills'] = $input['skills'];
         }
 
-        if (!empty($input['mcp_servers'])) {
+        if (! empty($input['mcp_servers'])) {
             $payload['mcp_servers'] = $input['mcp_servers'];
         }
 
-        if (!empty($input['stream'])) {
+        if (! empty($input['stream'])) {
             $payload['stream'] = true;
         }
 
@@ -501,7 +501,7 @@ final class PayloadBuilder
             $features[] = 'fast_mode';
         }
 
-        if (!empty($payload['skills'])) {
+        if (! empty($payload['skills'])) {
             $features[] = 'skills';
         }
 
@@ -538,7 +538,7 @@ final class PayloadBuilder
 
         if ($result === false) {
             throw new PayloadBuildException(
-                'Failed to serialize payload: ' . json_last_error_msg(),
+                'Failed to serialize payload: '.json_last_error_msg(),
             );
         }
 
@@ -566,7 +566,7 @@ final class PayloadBuilder
         foreach ($rawTools as $tool) {
             $type = $tool['type'] ?? null;
             if (is_string($type) && in_array($type, self::SERVER_TOOL_TYPES, true)) {
-                if (!in_array($type, $serverToolTypes, true)) {
+                if (! in_array($type, $serverToolTypes, true)) {
                     $serverToolTypes[] = $type;
                 }
                 if (ToolTypeCatalog::isToolSearch($type)) {
@@ -643,7 +643,7 @@ final class PayloadBuilder
         $allowed = ['type', 'name', 'max_content_tokens', 'citations'];
         $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
 
-        if (isset($tool['citations']) && (!is_array($tool['citations']) || !array_key_exists('enabled', $tool['citations']))) {
+        if (isset($tool['citations']) && (! is_array($tool['citations']) || ! array_key_exists('enabled', $tool['citations']))) {
             throw PayloadBuildException::invalidRequest(
                 'web_fetch: citations must be {enabled: bool}'
             );
@@ -697,7 +697,7 @@ final class PayloadBuilder
         $allowed = ['type', 'name', 'display_width_px', 'display_height_px', 'display_number'];
         $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
 
-        if (!isset($tool['display_width_px'], $tool['display_height_px'])) {
+        if (! isset($tool['display_width_px'], $tool['display_height_px'])) {
             throw PayloadBuildException::invalidRequest(
                 'computer: display_width_px and display_height_px are required'
             );
@@ -711,7 +711,7 @@ final class PayloadBuilder
 
     private function normaliseCustomTool(array $tool, bool $hasCodeExecution): array
     {
-        if (!isset($tool['allowed_callers'])) {
+        if (! isset($tool['allowed_callers'])) {
             return $tool;
         }
 
@@ -722,7 +722,7 @@ final class PayloadBuilder
     {
         $callers = $tool['allowed_callers'];
 
-        if (!is_array($callers) || $callers === []) {
+        if (! is_array($callers) || $callers === []) {
             throw PayloadBuildException::invalidRequest('allowed_callers must contain at least one entry');
         }
 
@@ -730,7 +730,7 @@ final class PayloadBuilder
         $normalized = [];
 
         foreach ($callers as $v) {
-            if (!in_array($v, $validValues, true)) {
+            if (! in_array($v, $validValues, true)) {
                 throw PayloadBuildException::invalidRequest("Invalid allowed_callers value: $v");
             }
             $normalized[$v] = true;
@@ -738,7 +738,7 @@ final class PayloadBuilder
 
         $tool['allowed_callers'] = array_keys($normalized);
 
-        if (isset($normalized[ToolTypeCatalog::CODE_EXECUTION]) && !$hasCodeExecution) {
+        if (isset($normalized[ToolTypeCatalog::CODE_EXECUTION]) && ! $hasCodeExecution) {
             throw PayloadBuildException::invalidRequest(
                 'allowed_callers references code_execution but code_execution tool is absent'
             );
@@ -790,7 +790,7 @@ final class PayloadBuilder
         $edits = [];
 
         if ($config->compaction !== null) {
-            if (!($capabilities['supports_compaction'] ?? false)) {
+            if (! ($capabilities['supports_compaction'] ?? false)) {
                 throw PayloadBuildException::invalidRequest("Compaction not supported on model $alias");
             }
             $edits[] = ['type' => ToolTypeCatalog::EDIT_COMPACT, ...$config->compaction];
@@ -811,7 +811,7 @@ final class PayloadBuilder
 
     private function requireContextManagementSupport(array $capabilities, string $alias): void
     {
-        if (!($capabilities['supports_context_management_edits'] ?? true)) {
+        if (! ($capabilities['supports_context_management_edits'] ?? true)) {
             throw PayloadBuildException::invalidRequest("Context management edits not supported on model $alias");
         }
     }
@@ -848,7 +848,7 @@ final class PayloadBuilder
 
     private function hasMcpServers(array $payload): bool
     {
-        return !empty($payload['mcp_servers']);
+        return ! empty($payload['mcp_servers']);
     }
 
     private function hasComputerUseTool(array $payload): bool

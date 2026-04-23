@@ -36,7 +36,7 @@ final class CreateSessionTest extends TestCase
             ],
         ]);
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -79,7 +79,7 @@ final class CreateSessionTest extends TestCase
         $response = $this->postJson('/api/v1/sessions', [
             'model_alias' => 'claude-sonnet',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(201);
@@ -96,7 +96,7 @@ final class CreateSessionTest extends TestCase
         $response = $this->postJson('/api/v1/sessions', [
             'model_alias' => 'nonexistent',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(422);
@@ -118,14 +118,14 @@ final class CreateSessionTest extends TestCase
         $createResponse = $this->postJson('/api/v1/sessions', [
             'model_alias' => 'claude-sonnet',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $createResponse->assertStatus(201);
         $sessionId = $createResponse->json('data.session_id');
 
         $deleteResponse = $this->deleteJson("/api/v1/sessions/{$sessionId}", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $deleteResponse->assertStatus(204);

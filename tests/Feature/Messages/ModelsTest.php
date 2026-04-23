@@ -28,7 +28,7 @@ final class ModelsTest extends TestCase
 
         Http::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -58,7 +58,7 @@ final class ModelsTest extends TestCase
     public function index_returns_all_configured_model_aliases(): void
     {
         $response = $this->getJson('/api/v1/models', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -81,7 +81,7 @@ final class ModelsTest extends TestCase
     public function index_returns_model_entries_with_correct_structure(): void
     {
         $response = $this->getJson('/api/v1/models', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -105,7 +105,7 @@ final class ModelsTest extends TestCase
         ]);
 
         $response = $this->getJson('/api/v1/models', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -118,7 +118,7 @@ final class ModelsTest extends TestCase
     public function show_returns_single_model(): void
     {
         $response = $this->getJson('/api/v1/models/claude-sonnet', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -136,7 +136,7 @@ final class ModelsTest extends TestCase
     public function show_returns_404_for_unknown_alias(): void
     {
         $response = $this->getJson('/api/v1/models/nonexistent-model', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -156,7 +156,7 @@ final class ModelsTest extends TestCase
         ]);
 
         $response = $this->getJson('/api/v1/models/claude-sonnet', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -182,7 +182,7 @@ final class ModelsTest extends TestCase
     public function index_has_first_and_last_id(): void
     {
         $response = $this->getJson('/api/v1/models', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);

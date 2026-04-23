@@ -60,9 +60,9 @@ final class MessagesController extends Controller
         $client = $request->attributes->get('auth.client');
         assert($client instanceof Client);
 
-        $gatewayRequestId = 'req_' . Str::random(24);
+        $gatewayRequestId = 'req_'.Str::random(24);
         $payload = $request->json()->all();
-        $startedAt = new DateTimeImmutable();
+        $startedAt = new DateTimeImmutable;
 
         $validation = $this->validator->validate($payload, ValidationContext::Sync, $client);
         if (! $validation->isValid()) {
@@ -103,7 +103,7 @@ final class MessagesController extends Controller
             return $this->failConnection($client, $gatewayRequestId, $modelAlias, $resolved->snapshot, $startedAt, $builtPayload->jsonBody);
         }
 
-        $completedAt = new DateTimeImmutable();
+        $completedAt = new DateTimeImmutable;
         $spendResult = $output->isSuccess
             ? $this->billing->recordSpend($client, $output->costUsd)
             : null;
@@ -139,7 +139,7 @@ final class MessagesController extends Controller
             costBreakdown: $output->costBreakdown,
             requestPayload: $builtPayload->jsonBody,
             responsePayload: $output->envelope->rawBody,
-            retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+            retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
         ));
 
         $headers = new GatewayHeaders(
@@ -162,7 +162,7 @@ final class MessagesController extends Controller
         $client = $request->attributes->get('auth.client');
         assert($client instanceof Client);
 
-        $gatewayRequestId = 'req_' . Str::random(24);
+        $gatewayRequestId = 'req_'.Str::random(24);
         $payload = $request->json()->all();
 
         $validation = $this->validator->validate($payload, ValidationContext::AsyncCallback, $client);
@@ -184,6 +184,7 @@ final class MessagesController extends Controller
         $authResult = $this->authorization->authorize($client, $modelAlias, $features);
         if (! $authResult->allowed) {
             $httpStatus = $authResult->reason->httpStatusCode();
+
             return new JsonResponse([
                 'type' => 'error',
                 'error' => ['type' => $authResult->reason->errorType(), 'message' => $authResult->message],
@@ -250,7 +251,7 @@ final class MessagesController extends Controller
         $client = $request->attributes->get('auth.client');
         assert($client instanceof Client);
 
-        $gatewayRequestId = 'req_' . Str::random(24);
+        $gatewayRequestId = 'req_'.Str::random(24);
         $payload = $request->json()->all();
 
         $validation = $this->validator->validate($payload, ValidationContext::CountTokens, $client);
@@ -470,9 +471,9 @@ final class MessagesController extends Controller
             serviceTierUsed: null,
             createdAt: $startedAt,
             startedAt: $startedAt,
-            completedAt: new DateTimeImmutable(),
+            completedAt: new DateTimeImmutable,
             requestPayload: $requestPayload,
-            retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+            retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
         ));
 
         return $this->errorResponse(504, 'upstream_timeout', $message, $gatewayRequestId);
@@ -489,7 +490,7 @@ final class MessagesController extends Controller
         string $modelAlias = '',
         string $modelSnapshot = '',
     ): void {
-        $now = new DateTimeImmutable();
+        $now = new DateTimeImmutable;
 
         $this->logging->record(new LoggingRecord(
             requestId: $gatewayRequestId,
@@ -509,7 +510,7 @@ final class MessagesController extends Controller
             startedAt: null,
             completedAt: $now,
             requestPayload: json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '',
-            retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+            retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
         ));
     }
 

@@ -32,7 +32,7 @@ final class FilesLifecycleTest extends TestCase
 
         Http::preventStrayRequests();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -63,7 +63,7 @@ final class FilesLifecycleTest extends TestCase
         $file = $this->createFileRecord();
 
         $response = $this->getJson("/api/v1/files/$file->file_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -86,7 +86,7 @@ final class FilesLifecycleTest extends TestCase
         $file = $this->createFileRecord();
 
         $response = $this->deleteJson("/api/v1/files/$file->file_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(204);
@@ -107,11 +107,11 @@ final class FilesLifecycleTest extends TestCase
         $file = $this->createFileRecord();
 
         $this->deleteJson("/api/v1/files/$file->file_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(204);
 
         $response = $this->getJson("/api/v1/files/$file->file_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -121,11 +121,11 @@ final class FilesLifecycleTest extends TestCase
     public function index_with_pagination_returns_cursor(): void
     {
         for ($i = 0; $i < 3; $i++) {
-            $this->createFileRecord("file_" . Str::random(24));
+            $this->createFileRecord('file_'.Str::random(24));
         }
 
         $response = $this->getJson('/api/v1/files?limit=2', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -134,8 +134,8 @@ final class FilesLifecycleTest extends TestCase
         $this->assertCount(2, $body['files']);
         $this->assertNotNull($body['next_cursor']);
 
-        $nextResponse = $this->getJson('/api/v1/files?limit=2&cursor=' . $body['next_cursor'], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+        $nextResponse = $this->getJson('/api/v1/files?limit=2&cursor='.$body['next_cursor'], [
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $nextResponse->assertStatus(200);
@@ -147,12 +147,12 @@ final class FilesLifecycleTest extends TestCase
     #[Test]
     public function index_with_purpose_filter(): void
     {
-        $this->createFileRecord('file_' . Str::random(24), 'document');
-        $this->createFileRecord('file_' . Str::random(24), 'document');
-        $this->createFileRecord('file_' . Str::random(24), 'vision');
+        $this->createFileRecord('file_'.Str::random(24), 'document');
+        $this->createFileRecord('file_'.Str::random(24), 'document');
+        $this->createFileRecord('file_'.Str::random(24), 'vision');
 
         $response = $this->getJson('/api/v1/files?purpose=document', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -169,7 +169,7 @@ final class FilesLifecycleTest extends TestCase
     public function show_nonexistent_file_returns_404(): void
     {
         $response = $this->getJson('/api/v1/files/file_000000000000000000000000', [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
@@ -179,12 +179,12 @@ final class FilesLifecycleTest extends TestCase
         ?string $fileId = null,
         string $purpose = 'document',
     ): FileRecord {
-        $fileId ??= 'file_' . Str::random(24);
+        $fileId ??= 'file_'.Str::random(24);
 
-        $record = new FileRecord();
+        $record = new FileRecord;
         $record->file_id = $fileId;
         $record->client_id = $this->client->id;
-        $record->anthropic_file_id = 'anth_' . Str::random(16);
+        $record->anthropic_file_id = 'anth_'.Str::random(16);
         $record->filename = 'test.pdf';
         $record->mime_type = $purpose === 'vision' ? 'image/png' : 'application/pdf';
         $record->size_bytes = 1024;

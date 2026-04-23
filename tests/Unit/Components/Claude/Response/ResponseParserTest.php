@@ -18,7 +18,7 @@ final class ResponseParserTest extends TestCase
     {
         parent::setUp();
 
-        $this->parser = new ResponseParser();
+        $this->parser = new ResponseParser;
     }
 
     #[Test]

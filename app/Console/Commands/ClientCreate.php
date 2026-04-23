@@ -35,7 +35,7 @@ final class ClientCreate extends Command
         $hashedKey = $keyHasher->hash($plainKey);
         $prefix = $keyGenerator->derivePrefix($plainKey);
 
-        $plainSecret = 'whsec_' . bin2hex(random_bytes(32));
+        $plainSecret = 'whsec_'.bin2hex(random_bytes(32));
         $encryptedSecret = Crypt::encryptString($plainSecret);
 
         $features = $this->parseFeatures($this->option('features'));

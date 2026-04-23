@@ -18,7 +18,7 @@ final class AuthorizationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->authorization = new Authorization();
+        $this->authorization = new Authorization;
     }
 
     #[Test]
@@ -187,7 +187,7 @@ final class AuthorizationTest extends TestCase
 
     private function makeClient(array $attributes): Client
     {
-        $client = new Client();
+        $client = new Client;
         $client->id = 1;
         $client->forceFill(array_merge([
             'name' => 'test-client',

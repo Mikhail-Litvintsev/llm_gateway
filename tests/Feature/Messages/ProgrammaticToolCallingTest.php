@@ -28,7 +28,7 @@ final class ProgrammaticToolCallingTest extends TestCase
 
         Http::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -104,7 +104,7 @@ final class ProgrammaticToolCallingTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 403, 422, 500]);
@@ -143,7 +143,7 @@ final class ProgrammaticToolCallingTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 403, 422, 500]);

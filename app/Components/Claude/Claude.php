@@ -4,24 +4,24 @@ declare(strict_types=1);
 
 namespace App\Components\Claude;
 
+use App\Components\Billing\Billing;
+use App\Components\Claude\Batch\BatchPersister;
+use App\Components\Claude\Batch\BatchPreValidator;
+use App\Components\Claude\Batch\BatchResultParser;
 use App\Components\Claude\DTO\Batch;
 use App\Components\Claude\DTO\BatchCreateRequest;
 use App\Components\Claude\DTO\ClaudeFile;
 use App\Components\Claude\DTO\ModelInfo;
 use App\Components\Claude\DTO\SendMessageInput;
 use App\Components\Claude\DTO\SendMessageOutput;
-use App\Components\Claude\Payload\DTO\BuiltPayload;
-use App\Components\Billing\Billing;
-use App\Components\Claude\Batch\BatchPersister;
-use App\Components\Claude\Batch\BatchPreValidator;
-use App\Components\Claude\Batch\BatchResultParser;
 use App\Components\Claude\Enums\BatchStatus;
 use App\Components\Claude\Errors\ErrorMapper;
 use App\Components\Claude\Files\DTO\FileListPage;
-use App\Components\Claude\Files\FilesDeletionHandler;
 use App\Components\Claude\Files\FilePurpose;
+use App\Components\Claude\Files\FilesDeletionHandler;
 use App\Components\Claude\Files\FilesRepository;
 use App\Components\Claude\Files\FilesUploadHandler;
+use App\Components\Claude\Payload\DTO\BuiltPayload;
 use App\Components\Claude\Response\ResponseParser;
 use App\Components\Delivery\Stream\DTO\StreamContext;
 use App\Components\Delivery\Stream\DTO\StreamOutcome;
@@ -127,7 +127,7 @@ final readonly class Claude
                 default => RequestStatus::FailedServerError,
             };
 
-            $now = new DateTimeImmutable();
+            $now = new DateTimeImmutable;
 
             $this->logging->record(new LoggingRecord(
                 requestId: $gatewayRequestId,
@@ -153,7 +153,7 @@ final readonly class Claude
                 costUsd: number_format($outcome->costUsd, 8, '.', ''),
                 costBreakdown: $outcome->costBreakdown,
                 requestPayload: $input->payload->jsonBody,
-                retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+                retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
             ));
         };
 
@@ -217,7 +217,7 @@ final readonly class Claude
     public function getBatch(string $anthropicBatchId, Client $client): Batch
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $anthropicBatchId;
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$anthropicBatchId;
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,
@@ -226,7 +226,7 @@ final readonly class Claude
             ->timeout(config('llm.claude.timeouts.connect'))
             ->get($endpoint);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new LogicException("Failed to get batch: HTTP {$response->status()}");
         }
 
@@ -255,7 +255,7 @@ final readonly class Claude
     public function getBatchResults(string $anthropicBatchId, Client $client): Generator
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $anthropicBatchId . '/results';
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$anthropicBatchId.'/results';
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,
@@ -267,7 +267,7 @@ final readonly class Claude
             ->get($endpoint);
 
         $body = $response->body();
-        $parser = new BatchResultParser();
+        $parser = new BatchResultParser;
 
         foreach (explode("\n", $body) as $line) {
             $result = $parser->parseLine($line);

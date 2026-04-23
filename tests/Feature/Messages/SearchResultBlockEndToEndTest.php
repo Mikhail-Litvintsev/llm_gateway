@@ -26,7 +26,7 @@ final class SearchResultBlockEndToEndTest extends TestCase
     {
         parent::setUp();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -105,7 +105,7 @@ final class SearchResultBlockEndToEndTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -138,7 +138,7 @@ final class SearchResultBlockEndToEndTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 422]);

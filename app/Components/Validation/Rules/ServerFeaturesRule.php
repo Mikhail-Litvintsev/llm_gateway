@@ -24,7 +24,7 @@ final readonly class ServerFeaturesRule
         foreach ($payload['tools'] ?? [] as $tool) {
             $type = $tool['type'] ?? null;
 
-            if (!is_string($type)) {
+            if (! is_string($type)) {
                 continue;
             }
 
@@ -39,8 +39,8 @@ final readonly class ServerFeaturesRule
             }
 
             if ($feature === ServerToolFeature::CodeExecution
-                && !$this->codeExecTracker->hasFreeHoursRemaining((int) $client->workspace_id)) {
-                throw new FeatureQuotaExhaustedException();
+                && ! $this->codeExecTracker->hasFreeHoursRemaining((int) $client->workspace_id)) {
+                throw new FeatureQuotaExhaustedException;
             }
         }
     }

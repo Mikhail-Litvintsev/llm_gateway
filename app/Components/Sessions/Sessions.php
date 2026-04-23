@@ -6,12 +6,12 @@ namespace App\Components\Sessions;
 
 use App\Components\Authorization\Authorization;
 use App\Components\Claude\Claude;
-use App\Components\Claude\ToolTypeCatalog;
 use App\Components\Claude\DTO\MessageResponse;
 use App\Components\Claude\DTO\SendMessageInput;
 use App\Components\Claude\Payload\DTO\BuiltPayload;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Claude\Response\ResponseParser;
+use App\Components\Claude\ToolTypeCatalog;
 use App\Components\Routing\Exceptions\UnknownModelAliasException;
 use App\Components\Routing\ModelResolver;
 use App\Components\Routing\WorkspaceResolver;
@@ -59,13 +59,13 @@ final readonly class Sessions implements SessionsContract
         $featuresUsed = $this->extractFeaturesFromTools($input->tools);
 
         $authResult = $this->authorization->authorize($client, $input->modelAlias, $featuresUsed);
-        if (!$authResult->allowed) {
+        if (! $authResult->allowed) {
             throw new RuntimeException($authResult->message ?? 'Authorization denied', 403);
         }
 
         if ($input->mcpServers !== null) {
             $allowedFeatures = $client->allowed_features ?? [];
-            if (!($allowedFeatures['mcp_connector'] ?? false)) {
+            if (! ($allowedFeatures['mcp_connector'] ?? false)) {
                 throw new RuntimeException('MCP connector is not enabled for this client', 403);
             }
         }
@@ -80,7 +80,7 @@ final readonly class Sessions implements SessionsContract
             contextManagement: $input->contextManagement,
             autoResume: $input->autoResume,
             expiresAt: $input->expiresAt ?? new DateTimeImmutable(
-                '+' . config('llm.sessions.default_ttl_hours', 336) . ' hours'
+                '+'.config('llm.sessions.default_ttl_hours', 336).' hours'
             ),
             mcpServers: $input->mcpServers,
         );
@@ -215,7 +215,7 @@ final readonly class Sessions implements SessionsContract
         $featuresUsed = $this->extractFeaturesFromTools($session->tools ?? []);
 
         $authResult = $this->authorization->authorize($client, $session->model_alias, $featuresUsed);
-        if (!$authResult->allowed) {
+        if (! $authResult->allowed) {
             throw new RuntimeException($authResult->message ?? 'Authorization denied', 403);
         }
 
@@ -255,12 +255,12 @@ final readonly class Sessions implements SessionsContract
             $payload['system'] = $session->system;
         }
 
-        if (!empty($session->tools)) {
+        if (! empty($session->tools)) {
             $payload['tools'] = $session->tools;
         }
 
         $decryptedMcpServers = $this->store->decryptMcpTokens($session->mcp_servers);
-        if (!empty($decryptedMcpServers)) {
+        if (! empty($decryptedMcpServers)) {
             $payload['mcp_servers'] = $decryptedMcpServers;
         }
 
@@ -279,7 +279,7 @@ final readonly class Sessions implements SessionsContract
     {
         $validationResult = $this->validator->validate($payload, ValidationContext::Session, $client);
 
-        if (!$validationResult->isValid()) {
+        if (! $validationResult->isValid()) {
             $errors = array_map(
                 fn ($e) => ['path' => $e->path, 'code' => $e->code, 'message' => $e->message],
                 $validationResult->errors,
@@ -295,13 +295,13 @@ final readonly class Sessions implements SessionsContract
         $sendInput = new SendMessageInput(
             payload: $builtPayload,
             client: $client,
-            gatewayRequestId: 'sess_sync_' . bin2hex(random_bytes(8)),
+            gatewayRequestId: 'sess_sync_'.bin2hex(random_bytes(8)),
             featuresUsed: $featuresUsed,
         );
 
         $output = $this->claude->sendMessage($sendInput);
 
-        if (!$output->isSuccess) {
+        if (! $output->isSuccess) {
             throw new RuntimeException(
                 $output->errorMessage ?? 'Claude API error',
                 $output->envelope->httpStatusCode,
@@ -383,7 +383,7 @@ final readonly class Sessions implements SessionsContract
 
         try {
             $buffer = '';
-            while (!$stream->eof()) {
+            while (! $stream->eof()) {
                 $chunk = $stream->read(8192);
                 if ($chunk === '') {
                     continue;
@@ -401,10 +401,11 @@ final readonly class Sessions implements SessionsContract
 
                     if (str_starts_with($line, 'event: ')) {
                         $currentEventType = substr($line, 7);
+
                         continue;
                     }
 
-                    if (!str_starts_with($line, 'data: ')) {
+                    if (! str_starts_with($line, 'data: ')) {
                         continue;
                     }
 

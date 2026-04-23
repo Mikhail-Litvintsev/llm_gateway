@@ -29,7 +29,7 @@ final class BatchPreValidator
         }
 
         if (count($items) > self::MAX_ITEMS) {
-            $this->fail(400, 'too_many_items', 'Batch exceeds maximum of ' . self::MAX_ITEMS . ' items');
+            $this->fail(400, 'too_many_items', 'Batch exceeds maximum of '.self::MAX_ITEMS.' items');
         }
 
         $this->validateCustomIdUniqueness($items);
@@ -56,20 +56,20 @@ final class BatchPreValidator
         foreach ($items as $index => $item) {
             $customId = $item['custom_id'] ?? '';
 
-            if (!preg_match($customIdPattern, $customId)) {
+            if (! preg_match($customIdPattern, $customId)) {
                 $this->fail(400, 'invalid_custom_id', "item {$customId}: custom_id must match ^[a-zA-Z0-9_-]{1,64}$", $index);
             }
 
             $params = $item['params'] ?? [];
 
-            if (!is_array($params) || $params === []) {
+            if (! is_array($params) || $params === []) {
                 $this->fail(400, 'invalid_request_error', "item {$customId}: params is required and must be a non-empty object", $index);
             }
 
             $result = $this->messageValidator->validate($item, ValidationContext::BatchItem, $client);
 
-            if (!$result->isValid()) {
-                $this->fail(400, 'invalid_request_error', "item {$customId}: " . $result->errors[0]->message, $index);
+            if (! $result->isValid()) {
+                $this->fail(400, 'invalid_request_error', "item {$customId}: ".$result->errors[0]->message, $index);
             }
 
             $this->modelResolver->resolve($params['model'] ?? config('llm.claude.default_model_alias'));
@@ -82,7 +82,7 @@ final class BatchPreValidator
         $size = strlen((string) json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         if ($size > $maxBytes) {
-            $this->fail(413, 'payload_too_large', 'Batch payload exceeds maximum size of ' . config('llm.max_batch_payload_mb') . ' MB');
+            $this->fail(413, 'payload_too_large', 'Batch payload exceeds maximum size of '.config('llm.max_batch_payload_mb').' MB');
         }
     }
 

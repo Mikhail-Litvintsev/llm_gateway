@@ -15,7 +15,7 @@ final readonly class ContextManagementConfig
     public static function fromArray(?array $raw): self
     {
         if ($raw === null || $raw === []) {
-            return new self();
+            return new self;
         }
 
         return new self(

@@ -19,7 +19,7 @@ final class DocsExamplesValidationTest extends TestCase
         $invalid = [];
         foreach ($matches[1] as $index => $block) {
             $trimmed = trim($block);
-            if ($trimmed === '' || !str_starts_with($trimmed, '{')) {
+            if ($trimmed === '' || ! str_starts_with($trimmed, '{')) {
                 continue;
             }
 
@@ -29,16 +29,17 @@ final class DocsExamplesValidationTest extends TestCase
 
             if ($this->isJsonLines($trimmed)) {
                 $this->validateJsonLines($trimmed, $index, $invalid);
+
                 continue;
             }
 
-            if (!json_validate($trimmed)) {
+            if (! json_validate($trimmed)) {
                 $preview = substr($trimmed, 0, 80);
                 $invalid[] = "Block #$index: invalid JSON — $preview...";
             }
         }
 
-        $this->assertEmpty($invalid, "Invalid JSON blocks in client_integration_guide.md:\n" . implode("\n", $invalid));
+        $this->assertEmpty($invalid, "Invalid JSON blocks in client_integration_guide.md:\n".implode("\n", $invalid));
     }
 
     #[Test]
@@ -61,19 +62,19 @@ final class DocsExamplesValidationTest extends TestCase
                 continue;
             }
 
-            if (!isset($decoded['model']) || !isset($decoded['messages'])) {
+            if (! isset($decoded['model']) || ! isset($decoded['messages'])) {
                 continue;
             }
 
-            if (!is_string($decoded['model'])) {
+            if (! is_string($decoded['model'])) {
                 $malformed[] = "Block #$index: 'model' is not a string";
             }
-            if (!is_array($decoded['messages'])) {
+            if (! is_array($decoded['messages'])) {
                 $malformed[] = "Block #$index: 'messages' is not an array";
             }
         }
 
-        $this->assertEmpty($malformed, "Malformed request examples:\n" . implode("\n", $malformed));
+        $this->assertEmpty($malformed, "Malformed request examples:\n".implode("\n", $malformed));
     }
 
     #[Test]
@@ -86,7 +87,7 @@ final class DocsExamplesValidationTest extends TestCase
         $invalid = [];
         foreach ($matches[1] as $index => $block) {
             $trimmed = trim($block);
-            if ($trimmed === '' || !str_starts_with($trimmed, '{')) {
+            if ($trimmed === '' || ! str_starts_with($trimmed, '{')) {
                 continue;
             }
 
@@ -96,16 +97,17 @@ final class DocsExamplesValidationTest extends TestCase
 
             if ($this->isJsonLines($trimmed)) {
                 $this->validateJsonLines($trimmed, $index, $invalid);
+
                 continue;
             }
 
-            if (!json_validate($trimmed)) {
+            if (! json_validate($trimmed)) {
                 $preview = substr($trimmed, 0, 80);
                 $invalid[] = "Block #$index: invalid JSON — $preview...";
             }
         }
 
-        $this->assertEmpty($invalid, "Invalid JSON response blocks:\n" . implode("\n", $invalid));
+        $this->assertEmpty($invalid, "Invalid JSON response blocks:\n".implode("\n", $invalid));
     }
 
     private function containsPlaceholders(string $json): bool
@@ -146,7 +148,7 @@ final class DocsExamplesValidationTest extends TestCase
                 continue;
             }
 
-            if (!json_validate($t)) {
+            if (! json_validate($t)) {
                 $invalid[] = "Block #$blockIndex line $lineNum: invalid JSONL";
             }
         }

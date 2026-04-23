@@ -51,7 +51,7 @@ final class FileUploadValidator
         $detectedMime = (string) $file->getMimeType();
         $allowedMimes = self::ALLOWED_MIME_BY_PURPOSE[$purpose->value];
 
-        if ($allowedMimes !== ['*'] && !in_array($detectedMime, $allowedMimes, true)) {
+        if ($allowedMimes !== ['*'] && ! in_array($detectedMime, $allowedMimes, true)) {
             return ['code' => 'mime_not_allowed_for_purpose', 'status' => 400];
         }
 

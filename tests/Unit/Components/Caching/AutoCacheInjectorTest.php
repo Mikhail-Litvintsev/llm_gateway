@@ -18,7 +18,7 @@ final class AutoCacheInjectorTest extends TestCase
     {
         parent::setUp();
 
-        $this->injector = new AutoCacheInjector();
+        $this->injector = new AutoCacheInjector;
 
         config([
             'llm.claude.caching.estimation_chars_per_token' => 3.5,
@@ -225,7 +225,7 @@ final class AutoCacheInjectorTest extends TestCase
 
     private function makeClient(array $features): Client
     {
-        $client = new Client();
+        $client = new Client;
         $client->id = 1;
         $client->allowed_features = $features;
 

@@ -44,7 +44,7 @@ final readonly class BatchResultApplier
         }
 
         $costUsd = 0.0;
-        $requestId = 'req_' . Str::random(24);
+        $requestId = 'req_'.Str::random(24);
 
         $decoded = json_decode($item->payload, true, 512, JSON_THROW_ON_ERROR);
         $params = $decoded['params'] ?? [];
@@ -78,9 +78,9 @@ final readonly class BatchResultApplier
                 errorType: null,
                 errorMessage: null,
                 serviceTierUsed: $usage['service_tier'] ?? null,
-                createdAt: new DateTimeImmutable(),
+                createdAt: new DateTimeImmutable,
                 startedAt: null,
-                completedAt: new DateTimeImmutable(),
+                completedAt: new DateTimeImmutable,
                 inputTokens: $usage['input_tokens'] ?? 0,
                 outputTokens: $usage['output_tokens'] ?? 0,
                 cacheReadTokens: $usage['cache_read_input_tokens'] ?? 0,
@@ -95,7 +95,7 @@ final readonly class BatchResultApplier
                 ],
                 requestPayload: $item->payload,
                 responsePayload: json_encode($line->message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+                retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
             ));
         } else {
             $errorStatus = match ($itemStatus) {
@@ -119,11 +119,11 @@ final readonly class BatchResultApplier
                 errorType: $line->error['type'] ?? $line->type,
                 errorMessage: $line->error['message'] ?? null,
                 serviceTierUsed: null,
-                createdAt: new DateTimeImmutable(),
+                createdAt: new DateTimeImmutable,
                 startedAt: null,
-                completedAt: new DateTimeImmutable(),
+                completedAt: new DateTimeImmutable,
                 requestPayload: $item->payload,
-                retentionUntil: new DateTimeImmutable('+' . config('llm.raw_log_retention_days', 14) . ' days'),
+                retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
             ));
         }
 

@@ -21,24 +21,24 @@ final class ThinkingCompatibilityRule
         $capabilities = config("llm.claude.model_capabilities.$model", []);
 
         if ($type === 'adaptive') {
-            if (!($capabilities['supports_adaptive_thinking'] ?? false)) {
+            if (! ($capabilities['supports_adaptive_thinking'] ?? false)) {
                 return new ValidationError('/thinking', 'adaptive_not_supported', "Adaptive thinking not supported on $model");
             }
 
             $effort = $thinking['effort'] ?? null;
-            if ($effort !== null && !in_array($effort, ['low', 'medium', 'high'], true)) {
+            if ($effort !== null && ! in_array($effort, ['low', 'medium', 'high'], true)) {
                 return new ValidationError('/thinking/effort', 'invalid_effort', "Invalid thinking effort: '$effort' — must be low, medium, or high");
             }
         }
 
         if ($type === 'enabled') {
-            if (!($capabilities['supports_thinking'] ?? false)) {
+            if (! ($capabilities['supports_thinking'] ?? false)) {
                 return new ValidationError('/thinking', 'thinking_not_supported', "$model does not support extended thinking");
             }
 
             $budget = $thinking['budget_tokens'] ?? null;
             $maxTokens = $payload['max_tokens'] ?? null;
-            $requiresBelowMax = !($capabilities['supports_adaptive_thinking'] ?? false);
+            $requiresBelowMax = ! ($capabilities['supports_adaptive_thinking'] ?? false);
 
             if ($requiresBelowMax && $budget !== null && $maxTokens !== null && $budget >= $maxTokens) {
                 return new ValidationError(
@@ -60,7 +60,7 @@ final class ThinkingCompatibilityRule
     {
         if (isset($payload['tool_choice'])) {
             $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'] ?? null;
-            if (!in_array($tcType, ['auto', 'none'], true)) {
+            if (! in_array($tcType, ['auto', 'none'], true)) {
                 return new ValidationError(
                     '/tool_choice',
                     'tool_choice_with_thinking',

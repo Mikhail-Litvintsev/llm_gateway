@@ -29,7 +29,7 @@ final readonly class FilesDeletionHandler
     private function deleteOnAnthropic(FileRecord $record, Client $client): void
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.files') . '/' . $record->anthropic_file_id;
+        $endpoint = config('llm.claude.endpoints.files').'/'.$record->anthropic_file_id;
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,
@@ -58,7 +58,7 @@ final readonly class FilesDeletionHandler
         throw new RuntimeException(
             json_encode([
                 'type' => 'error',
-                'error' => ['type' => 'provider_error', 'message' => 'Unexpected response from provider: HTTP ' . $status],
+                'error' => ['type' => 'provider_error', 'message' => 'Unexpected response from provider: HTTP '.$status],
             ]),
             502,
         );

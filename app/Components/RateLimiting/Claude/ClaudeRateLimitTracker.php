@@ -77,7 +77,7 @@ final class ClaudeRateLimitTracker
             return;
         }
 
-        if (!isset($headers['anthropic-ratelimit-requests-limit'])) {
+        if (! isset($headers['anthropic-ratelimit-requests-limit'])) {
             return;
         }
 
@@ -163,18 +163,18 @@ final class ClaudeRateLimitTracker
         $now = new DateTimeImmutable;
 
         $snapshot = new RateLimitSnapshot(
-            requestsLimit: (int) ($headers[$prefix . 'requests-limit'] ?? 0),
-            requestsRemaining: (int) ($headers[$prefix . 'requests-remaining'] ?? 0),
-            requestsResetAt: new DateTimeImmutable($headers[$prefix . 'requests-reset'] ?? 'now'),
-            tokensLimit: (int) ($headers[$prefix . 'tokens-limit'] ?? 0),
-            tokensRemaining: (int) ($headers[$prefix . 'tokens-remaining'] ?? 0),
-            tokensResetAt: new DateTimeImmutable($headers[$prefix . 'tokens-reset'] ?? 'now'),
-            inputTokensLimit: (int) ($headers[$prefix . 'input-tokens-limit'] ?? 0),
-            inputTokensRemaining: (int) ($headers[$prefix . 'input-tokens-remaining'] ?? 0),
-            inputTokensResetAt: new DateTimeImmutable($headers[$prefix . 'input-tokens-reset'] ?? 'now'),
-            outputTokensLimit: (int) ($headers[$prefix . 'output-tokens-limit'] ?? 0),
-            outputTokensRemaining: (int) ($headers[$prefix . 'output-tokens-remaining'] ?? 0),
-            outputTokensResetAt: new DateTimeImmutable($headers[$prefix . 'output-tokens-reset'] ?? 'now'),
+            requestsLimit: (int) ($headers[$prefix.'requests-limit'] ?? 0),
+            requestsRemaining: (int) ($headers[$prefix.'requests-remaining'] ?? 0),
+            requestsResetAt: new DateTimeImmutable($headers[$prefix.'requests-reset'] ?? 'now'),
+            tokensLimit: (int) ($headers[$prefix.'tokens-limit'] ?? 0),
+            tokensRemaining: (int) ($headers[$prefix.'tokens-remaining'] ?? 0),
+            tokensResetAt: new DateTimeImmutable($headers[$prefix.'tokens-reset'] ?? 'now'),
+            inputTokensLimit: (int) ($headers[$prefix.'input-tokens-limit'] ?? 0),
+            inputTokensRemaining: (int) ($headers[$prefix.'input-tokens-remaining'] ?? 0),
+            inputTokensResetAt: new DateTimeImmutable($headers[$prefix.'input-tokens-reset'] ?? 'now'),
+            outputTokensLimit: (int) ($headers[$prefix.'output-tokens-limit'] ?? 0),
+            outputTokensRemaining: (int) ($headers[$prefix.'output-tokens-remaining'] ?? 0),
+            outputTokensResetAt: new DateTimeImmutable($headers[$prefix.'output-tokens-reset'] ?? 'now'),
             recordedAt: $now,
         );
 
@@ -192,7 +192,7 @@ final class ClaudeRateLimitTracker
 
     private function recordBatchHeaders(string $workspaceKeyHash, string $modelSnapshot, array $headers): void
     {
-        if (!isset($headers['anthropic-ratelimit-batches-remaining'])) {
+        if (! isset($headers['anthropic-ratelimit-batches-remaining'])) {
             return;
         }
 

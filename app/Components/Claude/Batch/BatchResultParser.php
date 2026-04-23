@@ -26,10 +26,10 @@ final class BatchResultParser
         $type = $result['type'] ?? null;
 
         if ($customId === null || $type === null) {
-            throw new InvalidArgumentException("Invalid JSONL line: missing custom_id or result.type");
+            throw new InvalidArgumentException('Invalid JSONL line: missing custom_id or result.type');
         }
 
-        if (!in_array($type, self::VALID_TYPES, true)) {
+        if (! in_array($type, self::VALID_TYPES, true)) {
             throw new InvalidArgumentException("Unknown result type: $type");
         }
 

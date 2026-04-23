@@ -52,7 +52,7 @@ final class BatchesController extends Controller
         $client = $this->resolveClient($request);
         $batch = $this->findBatchOrFail($batchId, $client);
 
-        if (!in_array($batch->status, [BatchStatus::Ended, BatchStatus::Cancelled, BatchStatus::Failed, BatchStatus::Expired], true)) {
+        if (! in_array($batch->status, [BatchStatus::Ended, BatchStatus::Cancelled, BatchStatus::Failed, BatchStatus::Expired], true)) {
             abort(response()->json([
                 'type' => 'error',
                 'error' => ['type' => 'batch_not_ended', 'message' => 'Batch results are not available until the batch has ended'],
@@ -61,7 +61,7 @@ final class BatchesController extends Controller
 
         return response()->stream(function () use ($batch): void {
             foreach ($this->resultsStreamer->stream($batch) as $ndjsonLine) {
-                echo $ndjsonLine . "\n";
+                echo $ndjsonLine."\n";
                 if (ob_get_level() > 0) {
                     ob_flush();
                 }
@@ -87,7 +87,7 @@ final class BatchesController extends Controller
 
         $terminalStatuses = [BatchStatus::Ended, BatchStatus::Cancelled, BatchStatus::Expired, BatchStatus::Failed];
 
-        if (!in_array($batch->status, $terminalStatuses, true)) {
+        if (! in_array($batch->status, $terminalStatuses, true)) {
             abort(response()->json([
                 'type' => 'error',
                 'error' => ['type' => 'cannot_delete_in_flight_batch', 'message' => 'Only terminal batches can be deleted'],
@@ -205,7 +205,7 @@ final class BatchesController extends Controller
     private function deleteOnAnthropic(BatchRecord $batch, Client $client): void
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $batch->anthropic_batch_id;
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id;
 
         try {
             Http::withHeaders([

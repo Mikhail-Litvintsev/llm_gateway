@@ -30,6 +30,7 @@ class UsageTracker
 
         if ($newTotal > $cap) {
             $connection->incrbyfloat($key, -$costUsd);
+
             return false;
         }
 
@@ -64,7 +65,7 @@ class UsageTracker
         $prefix = config('llm.billing.hard_cap.redis_key_prefix', 'llm:billing:spend:');
         $month = CarbonImmutable::now('UTC')->format('Y-m');
 
-        return $prefix . $client->id . ':' . $month;
+        return $prefix.$client->id.':'.$month;
     }
 
     private function getCap(Client $client): ?float

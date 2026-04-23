@@ -36,7 +36,7 @@ final class FilesOwnershipTest extends TestCase
 
         Http::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $hasher = $this->app->make(KeyHasher::class);
 
         $workspace = ClaudeWorkspace::create([
@@ -80,7 +80,7 @@ final class FilesOwnershipTest extends TestCase
         $file = $this->createFileForClient($this->clientA);
 
         $response = $this->getJson("/api/v1/files/$file->file_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyB,
+            'Authorization' => 'Bearer '.$this->rawApiKeyB,
         ]);
 
         $response->assertStatus(404);
@@ -92,7 +92,7 @@ final class FilesOwnershipTest extends TestCase
         $file = $this->createFileForClient($this->clientA);
 
         $response = $this->deleteJson("/api/v1/files/$file->file_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyB,
+            'Authorization' => 'Bearer '.$this->rawApiKeyB,
         ]);
 
         $response->assertStatus(404);
@@ -109,7 +109,7 @@ final class FilesOwnershipTest extends TestCase
         $file = $this->createFileForClient($this->clientA);
 
         $response = $this->getJson("/api/v1/files/$file->file_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyA,
+            'Authorization' => 'Bearer '.$this->rawApiKeyA,
         ]);
 
         $response->assertStatus(200);
@@ -126,7 +126,7 @@ final class FilesOwnershipTest extends TestCase
         $clientBFile = $this->createFileForClient($this->clientB);
 
         $response = $this->getJson('/api/v1/files', [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyB,
+            'Authorization' => 'Bearer '.$this->rawApiKeyB,
         ]);
 
         $response->assertStatus(200);
@@ -142,11 +142,11 @@ final class FilesOwnershipTest extends TestCase
         $file = $this->createFileForClient($this->clientA);
 
         $responseGet = $this->getJson("/api/v1/files/$file->file_id", [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyB,
+            'Authorization' => 'Bearer '.$this->rawApiKeyB,
         ]);
 
         $responseDelete = $this->deleteJson("/api/v1/files/$file->file_id", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKeyB,
+            'Authorization' => 'Bearer '.$this->rawApiKeyB,
         ]);
 
         $this->assertSame(404, $responseGet->getStatusCode());
@@ -155,12 +155,12 @@ final class FilesOwnershipTest extends TestCase
 
     private function createFileForClient(Client $client): FileRecord
     {
-        $fileId = 'file_' . Str::random(24);
+        $fileId = 'file_'.Str::random(24);
 
-        $record = new FileRecord();
+        $record = new FileRecord;
         $record->file_id = $fileId;
         $record->client_id = $client->id;
-        $record->anthropic_file_id = 'anth_' . Str::random(16);
+        $record->anthropic_file_id = 'anth_'.Str::random(16);
         $record->filename = 'owned-file.pdf';
         $record->mime_type = 'application/pdf';
         $record->size_bytes = 512;

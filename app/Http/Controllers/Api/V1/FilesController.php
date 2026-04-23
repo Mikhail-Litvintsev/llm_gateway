@@ -26,7 +26,7 @@ final class FilesController extends Controller
     {
         $client = $this->resolveClient($request);
 
-        if (!$request->hasFile('file')) {
+        if (! $request->hasFile('file')) {
             return response()->json([
                 'type' => 'error',
                 'error' => ['type' => 'missing_file', 'message' => 'missing_file'],

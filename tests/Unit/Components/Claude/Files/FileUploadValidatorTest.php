@@ -22,7 +22,7 @@ final class FileUploadValidatorTest extends TestCase
 
         config(['llm.max_file_size_mb' => 500]);
 
-        $this->validator = new FileUploadValidator();
+        $this->validator = new FileUploadValidator;
     }
 
     #[Test]

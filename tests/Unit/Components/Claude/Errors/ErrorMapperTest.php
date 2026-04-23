@@ -17,7 +17,7 @@ final class ErrorMapperTest extends TestCase
     {
         parent::setUp();
 
-        $this->mapper = new ErrorMapper();
+        $this->mapper = new ErrorMapper;
     }
 
     public static function httpStatusProvider(): array

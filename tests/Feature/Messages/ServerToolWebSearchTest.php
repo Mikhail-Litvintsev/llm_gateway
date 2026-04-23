@@ -28,7 +28,7 @@ final class ServerToolWebSearchTest extends TestCase
     {
         parent::setUp();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -85,7 +85,7 @@ final class ServerToolWebSearchTest extends TestCase
                 ['type' => 'web_search_20260209'],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 403, 422]);
@@ -124,7 +124,7 @@ final class ServerToolWebSearchTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);

@@ -52,7 +52,7 @@ final class ContextEditingPayloadTest extends TestCase
     #[Test]
     public function is_empty_when_all_null(): void
     {
-        $config = new ContextManagementConfig();
+        $config = new ContextManagementConfig;
 
         $this->assertTrue($config->isEmpty());
     }

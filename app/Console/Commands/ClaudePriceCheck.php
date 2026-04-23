@@ -30,13 +30,13 @@ final class ClaudePriceCheck extends Command
             $rows[] = [
                 $alias,
                 $snapshot,
-                '$' . number_format($prices['input'] ?? 0, 2),
-                '$' . number_format($prices['output'] ?? 0, 2),
-                '$' . number_format($prices['cache_write_5m'] ?? 0, 2),
-                '$' . number_format($prices['cache_write_1h'] ?? 0, 2),
-                '$' . number_format($prices['cache_read'] ?? 0, 2),
-                '$' . number_format($prices['batch_input'] ?? 0, 2),
-                '$' . number_format($prices['batch_output'] ?? 0, 2),
+                '$'.number_format($prices['input'] ?? 0, 2),
+                '$'.number_format($prices['output'] ?? 0, 2),
+                '$'.number_format($prices['cache_write_5m'] ?? 0, 2),
+                '$'.number_format($prices['cache_write_1h'] ?? 0, 2),
+                '$'.number_format($prices['cache_read'] ?? 0, 2),
+                '$'.number_format($prices['batch_input'] ?? 0, 2),
+                '$'.number_format($prices['batch_output'] ?? 0, 2),
             ];
         }
 
@@ -52,10 +52,10 @@ final class ClaudePriceCheck extends Command
             $this->table(
                 ['Tool', 'Price'],
                 [
-                    ['Web Search (per 1k)', '$' . number_format($serverTools['web_search_per_1k'] ?? 0, 2)],
-                    ['Web Fetch', '$' . number_format($serverTools['web_fetch'] ?? 0, 2)],
+                    ['Web Search (per 1k)', '$'.number_format($serverTools['web_search_per_1k'] ?? 0, 2)],
+                    ['Web Fetch', '$'.number_format($serverTools['web_fetch'] ?? 0, 2)],
                     ['Code Execution (free hrs/mo)', (string) ($serverTools['code_execution_free_hours_per_month'] ?? 0)],
-                    ['Code Execution ($/hr after)', '$' . number_format($serverTools['code_execution_per_hour'] ?? 0, 2)],
+                    ['Code Execution ($/hr after)', '$'.number_format($serverTools['code_execution_per_hour'] ?? 0, 2)],
                 ],
             );
         }

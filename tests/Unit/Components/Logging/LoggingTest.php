@@ -25,12 +25,13 @@ final class LoggingTest extends TestCase
     use RefreshDatabase;
 
     private Logging $logging;
+
     private int $clientId;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->logging = new Logging();
+        $this->logging = new Logging;
         $this->clientId = $this->createTestClient();
     }
 
@@ -228,7 +229,7 @@ final class LoggingTest extends TestCase
     private function createTestClient(): int
     {
         $workspaceId = DB::table('claude_workspaces')->insertGetId([
-            'name' => 'ws-logging-' . uniqid(),
+            'name' => 'ws-logging-'.uniqid(),
             'api_key_encrypted' => Crypt::encryptString('test-key'),
             'is_active' => true,
             'created_at' => now(),
@@ -269,9 +270,9 @@ final class LoggingTest extends TestCase
             'errorType' => null,
             'errorMessage' => null,
             'serviceTierUsed' => null,
-            'createdAt' => new DateTimeImmutable(),
-            'startedAt' => new DateTimeImmutable(),
-            'completedAt' => new DateTimeImmutable(),
+            'createdAt' => new DateTimeImmutable,
+            'startedAt' => new DateTimeImmutable,
+            'completedAt' => new DateTimeImmutable,
             'inputTokens' => 100,
             'outputTokens' => 50,
             'costUsd' => '0.00150000',

@@ -32,12 +32,12 @@ final class Signer
             );
         }
 
-        $mac = hash_hmac('sha256', $timestamp . '.' . $body, $secret);
+        $mac = hash_hmac('sha256', $timestamp.'.'.$body, $secret);
 
         return new SignedRequest(
             body: $body,
             headers: [
-                'X-Webhook-Signature' => 'sha256=' . $mac,
+                'X-Webhook-Signature' => 'sha256='.$mac,
                 'X-Webhook-Timestamp' => $timestamp,
                 'X-Webhook-Request-Id' => $envelope->requestId,
                 'X-Webhook-Event' => $envelope->event->value,
@@ -58,7 +58,7 @@ final class Signer
 
         $current = $this->currentSecret($client);
         if ($current !== null) {
-            $computed = hash_hmac('sha256', $timestamp . '.' . $body, $current);
+            $computed = hash_hmac('sha256', $timestamp.'.'.$body, $current);
             if (hash_equals($computed, $provided)) {
                 return true;
             }
@@ -67,7 +67,7 @@ final class Signer
         if ($this->isWithinGracePeriod($client)) {
             $previous = $this->previousSecret($client);
             if ($previous !== null) {
-                $computed = hash_hmac('sha256', $timestamp . '.' . $body, $previous);
+                $computed = hash_hmac('sha256', $timestamp.'.'.$body, $previous);
                 if (hash_equals($computed, $provided)) {
                     return true;
                 }
@@ -104,13 +104,13 @@ final class Signer
 
     private function stripPrefix(string $signatureHeader): ?string
     {
-        if (!str_starts_with($signatureHeader, 'sha256=')) {
+        if (! str_starts_with($signatureHeader, 'sha256=')) {
             return null;
         }
 
         $hex = substr($signatureHeader, 7);
 
-        if (strlen($hex) !== 64 || !ctype_xdigit($hex)) {
+        if (strlen($hex) !== 64 || ! ctype_xdigit($hex)) {
             return null;
         }
 

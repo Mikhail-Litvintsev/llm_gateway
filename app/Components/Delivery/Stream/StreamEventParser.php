@@ -11,21 +11,32 @@ use JsonException;
 final class StreamEventParser
 {
     private ?int $inputTokens = null;
+
     private ?int $outputTokens = null;
+
     private ?int $cacheCreationInputTokens = null;
+
     private ?int $cacheReadInputTokens = null;
+
     private ?int $thinkingTokens = null;
+
     private ?string $stopReason = null;
+
     private ?string $serviceTier = null;
+
     private ?string $anthropicError = null;
+
     private int $eventsSeen = 0;
+
     private bool $completed = false;
+
     private bool $errored = false;
+
     private int $malformedEventCount = 0;
 
     /**
-     * @param string $eventName SSE event name (e.g. "message_start", "content_block_delta")
-     * @param string $dataJson  Raw JSON string from the SSE data line
+     * @param  string  $eventName  SSE event name (e.g. "message_start", "content_block_delta")
+     * @param  string  $dataJson  Raw JSON string from the SSE data line
      */
     public function consume(string $eventName, string $dataJson): void
     {
@@ -35,6 +46,7 @@ final class StreamEventParser
             $data = json_decode($dataJson, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             $this->malformedEventCount++;
+
             return;
         }
 

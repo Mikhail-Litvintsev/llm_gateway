@@ -7,7 +7,7 @@ namespace App\Components\Claude\DTO;
 final readonly class BatchCreateRequest
 {
     /**
-     * @param array<int, array<string, mixed>> $requests
+     * @param  array<int, array<string, mixed>>  $requests
      */
     public function __construct(
         public array $requests,

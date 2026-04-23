@@ -23,6 +23,7 @@ final class ClaudeStatus extends Command
 
         if (! $cached) {
             $this->warn('No healthcheck data available (no recent ping).');
+
             return self::SUCCESS;
         }
 
@@ -70,6 +71,7 @@ final class ClaudeStatus extends Command
 
         if (empty($keys)) {
             $this->info('No rate limit data cached.');
+
             return;
         }
 

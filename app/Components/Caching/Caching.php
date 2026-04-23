@@ -14,7 +14,7 @@ readonly class Caching
     ) {}
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public function autoInject(array $payload, string $modelAlias, Client $client): CacheInjectionResult
     {

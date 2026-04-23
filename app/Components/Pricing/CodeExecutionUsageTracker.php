@@ -36,8 +36,8 @@ final readonly class CodeExecutionUsageTracker
 
             $this->db->statement(
                 'INSERT INTO workspace_feature_usage (workspace_id, year_month, feature, `value`, updated_at) '
-                . 'VALUES (?, ?, ?, ?, NOW()) '
-                . 'ON DUPLICATE KEY UPDATE `value` = `value` + VALUES(`value`), updated_at = NOW()',
+                .'VALUES (?, ?, ?, ?, NOW()) '
+                .'ON DUPLICATE KEY UPDATE `value` = `value` + VALUES(`value`), updated_at = NOW()',
                 [$workspaceId, $yearMonth, self::FEATURE_KEY, $hoursUsed],
             );
 

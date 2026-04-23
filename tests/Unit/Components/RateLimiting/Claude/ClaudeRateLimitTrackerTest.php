@@ -63,7 +63,7 @@ final class ClaudeRateLimitTrackerTest extends TestCase
 
         Redis::shouldReceive('get')
             ->once()
-            ->andReturnUsing(function () use ($headers, $reset) {
+            ->andReturnUsing(function () use ($reset) {
                 return json_encode([
                     'requests_limit' => 1000,
                     'requests_remaining' => 999,

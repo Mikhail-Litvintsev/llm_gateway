@@ -6,8 +6,8 @@ namespace Tests\Feature\Messages;
 
 use App\Components\Auth\KeyGenerator;
 use App\Components\Auth\KeyHasher;
-use App\Models\Client;
 use App\Models\ClaudeWorkspace;
+use App\Models\Client;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Testing\TestResponse;
@@ -28,7 +28,7 @@ final class ValidationErrorsTest extends TestCase
 
         config(['llm.auth.api_key_pepper' => 'test-pepper']);
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
         $hasher = new KeyHasher('test-pepper');
 
@@ -65,7 +65,7 @@ final class ValidationErrorsTest extends TestCase
         $this->actAsClient();
 
         return $this->withHeaders([
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
             'Content-Type' => 'application/json',
         ])->postJson('/api/v1/messages', $payload);
     }

@@ -24,6 +24,7 @@ final class ClientRotateKey extends Command
 
         if (! $client) {
             $this->error('Client not found.');
+
             return self::FAILURE;
         }
 

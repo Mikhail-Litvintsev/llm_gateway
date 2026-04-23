@@ -21,7 +21,7 @@ final readonly class BetaHeaderRegistry
         $values = [];
 
         foreach ($features as $feature) {
-            if (!isset($this->registry[$feature])) {
+            if (! isset($this->registry[$feature])) {
                 throw new InvalidArgumentException("Unknown beta feature: $feature");
             }
             $values[] = $this->registry[$feature];

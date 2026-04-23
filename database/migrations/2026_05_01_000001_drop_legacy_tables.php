@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
-return new class extends Migration {
+
+return new class extends Migration
+{
     /** @var string[] */
     private const array LEGACY_TABLES = [
         'session_history',
@@ -22,7 +24,7 @@ return new class extends Migration {
     {
         $existingLegacy = array_filter(
             self::LEGACY_TABLES,
-            fn(string $table) => Schema::hasTable($table),
+            fn (string $table) => Schema::hasTable($table),
         );
 
         if (empty($existingLegacy)) {
@@ -32,8 +34,8 @@ return new class extends Migration {
         if (env('CLAUDE_ALLOW_LEGACY_DROP') !== 'yes-i-confirm-data-loss-2026-05') {
             throw new RuntimeException(
                 'Destructive migration. Set CLAUDE_ALLOW_LEGACY_DROP=yes-i-confirm-data-loss-2026-05 to proceed. '
-                . 'This will permanently drop api_clients, callback_urls, request_log, response_log, '
-                . 'raw_responses, pending_prompts, pending_responses, session_history, jobs.'
+                .'This will permanently drop api_clients, callback_urls, request_log, response_log, '
+                .'raw_responses, pending_prompts, pending_responses, session_history, jobs.'
             );
         }
 

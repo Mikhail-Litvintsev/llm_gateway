@@ -21,11 +21,11 @@ final readonly class BatchPersister
 
     public function persist(BatchCreateRequest $request, Client $client): BatchRecord
     {
-        $batchId = 'bat_' . Str::random(24);
+        $batchId = 'bat_'.Str::random(24);
         $autoUseCache = $request->autoUse1hCache ?? (bool) config('llm.claude.batch.auto_use_1h_cache_for_batch', true);
 
         return DB::transaction(function () use ($batchId, $request, $client, $autoUseCache): BatchRecord {
-            $record = new BatchRecord();
+            $record = new BatchRecord;
             $record->batch_id = $batchId;
             $record->client_id = $client->id;
             $record->status = BatchStatus::Created;

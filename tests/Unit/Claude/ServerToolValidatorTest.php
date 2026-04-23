@@ -18,7 +18,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function memory_on_opus_rejected(): void
     {
-        $rule = new MemoryModelGateRule();
+        $rule = new MemoryModelGateRule;
 
         $error = $rule->check([
             'model' => 'claude-opus',
@@ -32,7 +32,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function memory_on_sonnet_accepted(): void
     {
-        $rule = new MemoryModelGateRule();
+        $rule = new MemoryModelGateRule;
 
         $error = $rule->check([
             'model' => 'claude-sonnet',
@@ -45,7 +45,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function search_result_missing_source_rejected(): void
     {
-        $rule = new SearchResultBlockRule();
+        $rule = new SearchResultBlockRule;
 
         $error = $rule->check([
             'messages' => [
@@ -68,7 +68,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function citations_all_or_nothing_enforced(): void
     {
-        $rule = new CitationsConsistencyRule();
+        $rule = new CitationsConsistencyRule;
 
         $error = $rule->check([
             'messages' => [
@@ -88,7 +88,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function citations_with_output_config_rejected(): void
     {
-        $rule = new CitationsConsistencyRule();
+        $rule = new CitationsConsistencyRule;
 
         $error = $rule->check([
             'messages' => [
@@ -108,7 +108,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function ptc_with_strict_rejected(): void
     {
-        $rule = new PtcContractRule();
+        $rule = new PtcContractRule;
 
         $error = $rule->check([
             'tools' => [
@@ -124,7 +124,7 @@ final class ServerToolValidatorTest extends TestCase
     #[Test]
     public function ptc_with_disable_parallel_rejected(): void
     {
-        $rule = new PtcContractRule();
+        $rule = new PtcContractRule;
 
         $error = $rule->check([
             'tools' => [
@@ -147,7 +147,7 @@ final class ServerToolValidatorTest extends TestCase
             ],
         ]);
 
-        $rule = new ThinkingCompatibilityRule();
+        $rule = new ThinkingCompatibilityRule;
 
         $error = $rule->check([
             'model' => 'claude-haiku',
@@ -168,7 +168,7 @@ final class ServerToolValidatorTest extends TestCase
             ],
         ]);
 
-        $rule = new ThinkingCompatibilityRule();
+        $rule = new ThinkingCompatibilityRule;
 
         $error = $rule->check([
             'model' => 'claude-sonnet',

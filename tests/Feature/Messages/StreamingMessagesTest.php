@@ -28,7 +28,7 @@ final class StreamingMessagesTest extends TestCase
 
         Http::preventStrayRequests();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -69,7 +69,7 @@ final class StreamingMessagesTest extends TestCase
             "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}",
             "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}",
             "event: message_stop\ndata: {\"type\":\"message_stop\"}",
-            "",
+            '',
         ]);
 
         Http::fake([
@@ -85,7 +85,7 @@ final class StreamingMessagesTest extends TestCase
             'max_tokens' => 1024,
             'stream' => true,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -114,7 +114,7 @@ final class StreamingMessagesTest extends TestCase
             'max_tokens' => 1024,
             'stream' => true,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertGreaterThanOrEqual(200, $response->getStatusCode());
@@ -141,7 +141,7 @@ final class StreamingMessagesTest extends TestCase
             'model' => 'claude-sonnet',
             'stream' => true,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -160,7 +160,7 @@ final class StreamingMessagesTest extends TestCase
             'max_tokens' => 1024,
             'stream' => true,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(402);

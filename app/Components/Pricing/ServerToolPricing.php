@@ -21,7 +21,7 @@ final readonly class ServerToolPricing
         $freeHoursRemaining = $codeExecTracker->poolSize();
 
         if ($codeExecutionHoursUsed > 0) {
-            if (!ToolTypeCatalog::codeExecutionIsFree($requestServerToolTypes)) {
+            if (! ToolTypeCatalog::codeExecutionIsFree($requestServerToolTypes)) {
                 $consumption = $codeExecTracker->consume($workspaceId, $codeExecutionHoursUsed);
                 $codeExecutionCost = $consumption->billedHours * (float) config('llm.pricing.code_execution.paid_per_hour', 0.05);
                 $freeHoursRemaining = $consumption->freeHoursRemainingAfter;

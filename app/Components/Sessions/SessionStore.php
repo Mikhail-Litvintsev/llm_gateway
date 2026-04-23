@@ -14,7 +14,6 @@ use DateTimeImmutable;
 use Illuminate\Contracts\Encryption\Encrypter;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 final class SessionStore implements SessionStoreContract
 {
@@ -26,9 +25,9 @@ final class SessionStore implements SessionStoreContract
     public function create(SessionCreateInput $input): SessionMetadata
     {
         return $this->db->transaction(function () use ($input): SessionMetadata {
-            $publicId = 'sess_' . strtolower(Str::ulid()->toBase32());
+            $publicId = 'sess_'.strtolower(Str::ulid()->toBase32());
 
-            $session = new Session();
+            $session = new Session;
             $session->session_id = $publicId;
             $session->client_id = $input->clientId;
             $session->workspace_id = $input->workspaceId;
@@ -79,7 +78,7 @@ final class SessionStore implements SessionStoreContract
         return $this->db->transaction(function () use ($session, $content): SessionMessage {
             $turnIndex = $this->nextTurnIndex($session);
 
-            $message = new SessionMessage();
+            $message = new SessionMessage;
             $message->session_id = $session->id;
             $message->turn_index = $turnIndex;
             $message->role = 'user';
@@ -103,7 +102,7 @@ final class SessionStore implements SessionStoreContract
         return $this->db->transaction(function () use ($session, $content, $stopReason, $usage, $model): SessionMessage {
             $turnIndex = $this->nextTurnIndex($session);
 
-            $message = new SessionMessage();
+            $message = new SessionMessage;
             $message->session_id = $session->id;
             $message->turn_index = $turnIndex;
             $message->role = 'assistant';

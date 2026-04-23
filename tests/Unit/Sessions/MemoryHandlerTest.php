@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Sessions;
 
+use App\Components\Sessions\DTO\SessionCreateInput;
 use App\Components\Sessions\MemoryHandler;
 use App\Components\Sessions\SessionStore;
-use App\Components\Sessions\DTO\SessionCreateInput;
 use App\Models\Session;
 use App\Models\SessionMemoryFile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -305,7 +305,7 @@ final class MemoryHandlerTest extends TestCase
     private function createSession(): Session
     {
         $workspaceId = (int) DB::table('claude_workspaces')->insertGetId([
-            'name' => 'ws-' . uniqid(),
+            'name' => 'ws-'.uniqid(),
             'api_key_encrypted' => Crypt::encryptString('test-key'),
             'is_active' => true,
             'created_at' => now(),
@@ -313,7 +313,7 @@ final class MemoryHandlerTest extends TestCase
         ]);
 
         $clientId = (int) DB::table('clients')->insertGetId([
-            'name' => 'client-' . uniqid(),
+            'name' => 'client-'.uniqid(),
             'workspace_id' => $workspaceId,
             'api_key_hash' => random_bytes(32),
             'api_key_prefix' => substr(uniqid(), 0, 12),

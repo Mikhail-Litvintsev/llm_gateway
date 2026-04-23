@@ -45,7 +45,7 @@ final class FetchBatchResults implements ShouldQueue
     ): void {
         $batch = BatchRecord::where('batch_id', $this->batchId)->firstOrFail();
 
-        if (!in_array($batch->status, [BatchStatus::InProgress, BatchStatus::Fetching], true)) {
+        if (! in_array($batch->status, [BatchStatus::InProgress, BatchStatus::Fetching], true)) {
             return;
         }
 
@@ -77,7 +77,7 @@ final class FetchBatchResults implements ShouldQueue
         ResponseParser $responseParser,
     ): array {
         $workspace = $workspaces->resolveForClient($batch->client);
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $batch->anthropic_batch_id . '/results';
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id.'/results';
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,
@@ -124,7 +124,7 @@ final class FetchBatchResults implements ShouldQueue
     }
 
     /**
-     * @param list<UsageData> $usageItems
+     * @param  list<UsageData>  $usageItems
      */
     private function finalizeBatch(
         BatchRecord $batch,
@@ -143,7 +143,7 @@ final class FetchBatchResults implements ShouldQueue
             ->first();
 
         $modelAlias = $this->resolveModelAliasFromBatch($batch);
-        $pricingTier = config('llm.claude.pricing.' . $modelAlias, []);
+        $pricingTier = config('llm.claude.pricing.'.$modelAlias, []);
         $metrics = $cacheMetrics->compute($usageItems, $pricingTier);
 
         $batch->update([

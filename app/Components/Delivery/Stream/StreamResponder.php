@@ -211,6 +211,7 @@ final readonly class StreamResponder
 
             if (str_starts_with($line, 'event: ')) {
                 $eventName = substr($line, 7);
+
                 continue;
             }
 

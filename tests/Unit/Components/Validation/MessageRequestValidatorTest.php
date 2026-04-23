@@ -51,7 +51,7 @@ final class MessageRequestValidatorTest extends TestCase
     private function assertHasError(ValidationResult $result, string $code): void
     {
         $codes = array_map(static fn ($e) => $e->code, $result->errors);
-        $this->assertContains($code, $codes, "Expected error code '$code' not found. Got: " . implode(', ', $codes));
+        $this->assertContains($code, $codes, "Expected error code '$code' not found. Got: ".implode(', ', $codes));
     }
 
     private function assertNoErrorCode(ValidationResult $result, string $code): void

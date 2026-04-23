@@ -65,7 +65,7 @@ final readonly class SkillsOrchestrator
     private function assertSkillsEnabled(Client $client): void
     {
         $allowedFeatures = $client->allowed_features ?? [];
-        if (!($allowedFeatures['skills'] ?? false)) {
+        if (! ($allowedFeatures['skills'] ?? false)) {
             throw new RuntimeException('Skills feature is not enabled for this client', 403);
         }
     }

@@ -23,8 +23,9 @@ final class ServiceTierValidatorTest extends TestCase
 
     private function makeClient(array $features = []): Client
     {
-        $client = new Client();
+        $client = new Client;
         $client->forceFill(['id' => 1, 'name' => 'test', 'api_key_hash' => 'h', 'allowed_features' => $features]);
+
         return $client;
     }
 

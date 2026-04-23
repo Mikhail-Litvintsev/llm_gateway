@@ -28,7 +28,7 @@ final class SyncMessagesTest extends TestCase
 
         Http::preventStrayRequests();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -94,7 +94,7 @@ final class SyncMessagesTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hi']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(200);
@@ -149,7 +149,7 @@ final class SyncMessagesTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hello']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(200);
 
         $this->client->refresh();
@@ -188,7 +188,7 @@ final class SyncMessagesTest extends TestCase
         $response = $this->postJson('/api/v1/messages', [
             'model' => 'claude-sonnet',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(400);
@@ -206,7 +206,7 @@ final class SyncMessagesTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hi']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 404, 422]);
@@ -227,7 +227,7 @@ final class SyncMessagesTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hi']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertGreaterThanOrEqual(400, $response->getStatusCode());
@@ -255,7 +255,7 @@ final class SyncMessagesTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hi']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(402);
@@ -281,7 +281,7 @@ final class SyncMessagesTest extends TestCase
             'max_tokens' => 1024,
             'thinking' => ['type' => 'enabled', 'budget_tokens' => 5000],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(403);

@@ -56,10 +56,10 @@ final readonly class FilesUploadHandler
         }
 
         $body = $response->json();
-        $fileId = 'file_' . Str::random(24);
+        $fileId = 'file_'.Str::random(24);
 
         $record = DB::transaction(function () use ($body, $fileId, $client, $file, $purpose): FileRecord {
-            $record = new FileRecord();
+            $record = new FileRecord;
             $record->file_id = $fileId;
             $record->client_id = $client->id;
             $record->anthropic_file_id = $body['id'];

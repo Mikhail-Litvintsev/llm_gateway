@@ -23,6 +23,7 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 1;
+
     public int $timeout = 600;
 
     public function __construct(
@@ -34,7 +35,7 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
         $lockKey = AccumulatorBucketKey::lockKey($this->bucketKey);
         $lock = Redis::connection('default')->set($lockKey, '1', 'EX', 60, 'NX');
 
-        if (!$lock) {
+        if (! $lock) {
             return;
         }
 
@@ -52,7 +53,7 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
 
             $requests = array_map(
                 fn (array $item): array => [
-                    'custom_id' => $item['custom_id'] ?? $item['model'] . '-' . uniqid(),
+                    'custom_id' => $item['custom_id'] ?? $item['model'].'-'.uniqid(),
                     'params' => $item,
                 ],
                 $items,
@@ -81,13 +82,13 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
     {
         $keys = [
             $this->bucketKey,
-            $this->bucketKey . ':meta',
-            $this->bucketKey . ':ids',
+            $this->bucketKey.':meta',
+            $this->bucketKey.':ids',
             AccumulatorBucketKey::pendingSetKey(),
         ];
 
         $script = file_get_contents(
-            __DIR__ . '/../../Components/Claude/Batch/Accumulator/lua/flush_bucket.lua'
+            __DIR__.'/../../Components/Claude/Batch/Accumulator/lua/flush_bucket.lua'
         );
 
         return Redis::connection('default')->eval($script, 4, ...$keys);

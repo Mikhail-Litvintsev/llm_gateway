@@ -18,7 +18,7 @@ final readonly class UsageReportOrchestrator
     public function getUsage(Client $client, array $queryParams): array
     {
         $allowedFeatures = $client->allowed_features ?? [];
-        if (!($allowedFeatures['usage_api'] ?? false)) {
+        if (! ($allowedFeatures['usage_api'] ?? false)) {
             throw new RuntimeException('usage_api_not_enabled', 403);
         }
 

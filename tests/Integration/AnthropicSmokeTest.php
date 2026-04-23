@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use App\Components\Auth\KeyGenerator;
+use App\Components\Auth\KeyHasher;
 use App\Components\Routing\WorkspaceResolver;
 use App\Jobs\Scheduled\ClaudeApiPingScheduled;
-use App\Models\Client;
 use App\Models\ClaudeWorkspace;
+use App\Models\Client;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -46,8 +48,8 @@ final class AnthropicSmokeTest extends TestCase
             ]);
         }
 
-        $keyGenerator = app(\App\Components\Auth\KeyGenerator::class);
-        $keyHasher = app(\App\Components\Auth\KeyHasher::class);
+        $keyGenerator = app(KeyGenerator::class);
+        $keyHasher = app(KeyHasher::class);
 
         $this->plainKey = $keyGenerator->generate();
 
@@ -80,7 +82,7 @@ final class AnthropicSmokeTest extends TestCase
             'model' => 'claude-haiku',
             'messages' => [['role' => 'user', 'content' => 'Hello']],
             'max_tokens' => 16,
-        ], ['Authorization' => 'Bearer ' . $this->plainKey]);
+        ], ['Authorization' => 'Bearer '.$this->plainKey]);
 
         $response->assertStatus(200);
         $data = $response->json();
@@ -94,7 +96,7 @@ final class AnthropicSmokeTest extends TestCase
             'model' => 'claude-haiku',
             'messages' => [['role' => 'user', 'content' => [['type' => 'text', 'text' => 'Reply with exactly the word "hello".']]]],
             'max_tokens' => 32,
-        ], ['Authorization' => 'Bearer ' . $this->plainKey]);
+        ], ['Authorization' => 'Bearer '.$this->plainKey]);
 
         $response->assertStatus(200);
         $this->assertNotNull($response->headers->get('X-Gateway-Cost-USD'));

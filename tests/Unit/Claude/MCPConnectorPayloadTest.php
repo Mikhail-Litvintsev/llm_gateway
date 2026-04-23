@@ -17,6 +17,7 @@ use Tests\TestCase;
 final class MCPConnectorPayloadTest extends TestCase
 {
     private PayloadBuilder $builder;
+
     private Client $client;
 
     protected function setUp(): void
@@ -24,7 +25,7 @@ final class MCPConnectorPayloadTest extends TestCase
         parent::setUp();
 
         $this->builder = new PayloadBuilder(
-            new ModelResolver(),
+            new ModelResolver,
             new FileSourceResolver($this->createMock(FilesRepository::class)),
             [
                 'mcp_client' => 'mcp-client-2025-11-20',
@@ -34,7 +35,7 @@ final class MCPConnectorPayloadTest extends TestCase
             ],
         );
 
-        $this->client = new Client();
+        $this->client = new Client;
         $this->client->forceFill([
             'id' => 1,
             'name' => 'test',
@@ -120,7 +121,7 @@ final class MCPConnectorPayloadTest extends TestCase
     #[Test]
     public function response_parser_tags_mcp_tool_use_blocks(): void
     {
-        $parser = new ResponseParser();
+        $parser = new ResponseParser;
 
         $response = $parser->parseMessageResponse([
             'id' => 'msg_123',

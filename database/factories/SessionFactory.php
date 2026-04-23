@@ -14,7 +14,7 @@ final class SessionFactory extends Factory
     public function definition(): array
     {
         return [
-            'session_id' => 'sess_' . strtolower(fake()->ulid()),
+            'session_id' => 'sess_'.strtolower(fake()->ulid()),
             'client_id' => 1,
             'workspace_id' => 1,
             'model_alias' => 'claude-sonnet',

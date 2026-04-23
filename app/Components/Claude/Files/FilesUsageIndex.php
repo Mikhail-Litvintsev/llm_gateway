@@ -16,8 +16,8 @@ final class FilesUsageIndex
         return DB::table('request_raw')
             ->where('created_at', '>=', $cutoff)
             ->where(function ($query) use ($fileRecord): void {
-                $query->where('payload', 'like', '%' . $fileRecord->file_id . '%')
-                    ->orWhere('payload', 'like', '%' . $fileRecord->anthropic_file_id . '%');
+                $query->where('payload', 'like', '%'.$fileRecord->file_id.'%')
+                    ->orWhere('payload', 'like', '%'.$fileRecord->anthropic_file_id.'%');
             })
             ->limit(1)
             ->exists();

@@ -45,13 +45,13 @@ final class PollBatchesScheduled extends Command
     {
         $client = $batch->client;
 
-        if (!$client) {
+        if (! $client) {
             return;
         }
 
         $workspace = $workspaces->resolveForClient($client);
 
-        $endpoint = config('llm.claude.endpoints.batches') . '/' . $batch->anthropic_batch_id;
+        $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id;
 
         try {
             $response = Http::withHeaders([

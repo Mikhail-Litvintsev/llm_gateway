@@ -30,7 +30,7 @@ final class MessagesBatchAccumulatorController extends Controller
 
         $validation = $this->validator->validate($payload, ValidationContext::BatchItem, $client);
 
-        if (!$validation->isValid()) {
+        if (! $validation->isValid()) {
             return new JsonResponse([
                 'error' => [
                     'type' => 'validation_error',

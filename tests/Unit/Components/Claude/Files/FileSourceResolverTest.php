@@ -127,7 +127,7 @@ final class FileSourceResolverTest extends TestCase
 
     private function makeFileRecord(string $fileId, int $clientId, string $anthropicFileId): FileRecord
     {
-        $record = new FileRecord();
+        $record = new FileRecord;
         $record->file_id = $fileId;
         $record->client_id = $clientId;
         $record->anthropic_file_id = $anthropicFileId;

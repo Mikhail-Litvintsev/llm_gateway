@@ -35,7 +35,7 @@ final class BatchesLifecycleTest extends TestCase
         Http::fake();
         Bus::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -70,7 +70,7 @@ final class BatchesLifecycleTest extends TestCase
             'requests' => $items,
             'callback_url' => 'https://example.com/callback',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(201);
@@ -101,7 +101,7 @@ final class BatchesLifecycleTest extends TestCase
         $this->postJson('/api/v1/batches', [
             'requests' => $items,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(201);
 
         Bus::assertDispatched(SubmitBatchToAnthropic::class);
@@ -116,7 +116,7 @@ final class BatchesLifecycleTest extends TestCase
             'requests' => $items,
             'callback_url' => 'https://example.com/webhook',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(201);
 
         $this->assertDatabaseHas('batches', [
@@ -131,7 +131,7 @@ final class BatchesLifecycleTest extends TestCase
         $response = $this->postJson('/api/v1/batches', [
             'requests' => [],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertGreaterThanOrEqual(400, $response->getStatusCode());
@@ -151,7 +151,7 @@ final class BatchesLifecycleTest extends TestCase
         $response = $this->postJson('/api/v1/batches', [
             'requests' => $items,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertGreaterThanOrEqual(400, $response->getStatusCode());
@@ -169,7 +169,7 @@ final class BatchesLifecycleTest extends TestCase
         $this->postJson('/api/v1/batches', [
             'requests' => $items,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(201);
 
         $batchRecord = BatchRecord::where('client_id', $this->client->id)->first();
@@ -212,7 +212,7 @@ final class BatchesLifecycleTest extends TestCase
                 'model' => 'claude-sonnet',
                 'max_tokens' => 1024,
                 'messages' => [
-                    ['role' => 'user', 'content' => 'Hello from batch item ' . $customId],
+                    ['role' => 'user', 'content' => 'Hello from batch item '.$customId],
                 ],
             ],
         ];

@@ -23,6 +23,7 @@ final class ClientShow extends Command
 
         if (! $client) {
             $this->error('Client not found.');
+
             return self::FAILURE;
         }
 
@@ -57,10 +58,10 @@ final class ClientShow extends Command
         $features = $client->allowed_features ?? [];
         $featuresDisplay = empty($features) ? 'default' : implode(', ', array_keys(array_filter($features)));
 
-        $capUsd = $client->monthly_spend_cap_usd !== null ? '$' . number_format((float) $client->monthly_spend_cap_usd, 2) : 'unlimited';
-        $spentUsd = '$' . number_format((float) $monthlyCost, 4);
+        $capUsd = $client->monthly_spend_cap_usd !== null ? '$'.number_format((float) $client->monthly_spend_cap_usd, 2) : 'unlimited';
+        $spentUsd = '$'.number_format((float) $monthlyCost, 4);
         $remaining = $client->monthly_spend_cap_usd !== null
-            ? '$' . number_format(max(0, (float) $client->monthly_spend_cap_usd - (float) $monthlyCost), 4)
+            ? '$'.number_format(max(0, (float) $client->monthly_spend_cap_usd - (float) $monthlyCost), 4)
             : 'n/a';
 
         $this->table(

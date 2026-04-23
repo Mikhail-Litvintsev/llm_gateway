@@ -41,6 +41,7 @@ final class SyncClaudeCapabilities extends Command
             } catch (Throwable $e) {
                 $this->error("Failed to fetch $snapshot: {$e->getMessage()}");
                 $errorCount++;
+
                 continue;
             }
 
@@ -51,7 +52,7 @@ final class SyncClaudeCapabilities extends Command
 
             $drift = $configCaps->diff($liveCaps);
             if ($drift !== []) {
-                $this->warn("Drift detected for $snapshot: " . json_encode($drift));
+                $this->warn("Drift detected for $snapshot: ".json_encode($drift));
             } else {
                 $this->info("$snapshot: OK");
             }
@@ -59,6 +60,7 @@ final class SyncClaudeCapabilities extends Command
 
         if ($totalCount > 0 && $errorCount >= (int) ceil($totalCount * 0.5)) {
             $this->error("Hard failure: $errorCount/$totalCount snapshots failed");
+
             return 1;
         }
 

@@ -19,7 +19,7 @@ final class BatchResultParserTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->parser = new BatchResultParser();
+        $this->parser = new BatchResultParser;
     }
 
     #[Test]

@@ -12,8 +12,8 @@ final class EloquentSkillsRepository implements SkillsRepository
 {
     public function create(int $clientId, string $name, bool $isPrebuilt, ?string $version = null): ClientSkill
     {
-        $skill = new ClientSkill();
-        $skill->skill_id = 'skl_' . Str::random(24);
+        $skill = new ClientSkill;
+        $skill->skill_id = 'skl_'.Str::random(24);
         $skill->client_id = $clientId;
         $skill->name = $name;
         $skill->is_prebuilt = $isPrebuilt;

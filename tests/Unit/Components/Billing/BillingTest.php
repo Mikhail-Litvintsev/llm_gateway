@@ -20,6 +20,7 @@ final class BillingTest extends TestCase
     use RefreshDatabase;
 
     private Billing $billing;
+
     private UsageTracker $usageTracker;
 
     protected function setUp(): void
@@ -207,7 +208,7 @@ final class BillingTest extends TestCase
 
     private function makeClientModel(array $overrides): Client
     {
-        $client = new Client();
+        $client = new Client;
         $client->id = 1;
         $client->forceFill(array_merge([
             'name' => 'test-client',
@@ -222,7 +223,7 @@ final class BillingTest extends TestCase
     private function createDbClient(array $overrides = []): Client
     {
         $workspaceId = DB::table('claude_workspaces')->insertGetId([
-            'name' => 'ws-' . uniqid(),
+            'name' => 'ws-'.uniqid(),
             'api_key_encrypted' => Crypt::encryptString('test-key'),
             'is_active' => true,
             'created_at' => now(),

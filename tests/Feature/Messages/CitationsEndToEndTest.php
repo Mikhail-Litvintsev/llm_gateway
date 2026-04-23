@@ -28,7 +28,7 @@ final class CitationsEndToEndTest extends TestCase
 
         Http::fake();
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -91,7 +91,7 @@ final class CitationsEndToEndTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 422]);
@@ -126,7 +126,7 @@ final class CitationsEndToEndTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $this->assertContains($response->getStatusCode(), [400, 422]);

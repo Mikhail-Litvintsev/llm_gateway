@@ -16,7 +16,7 @@ final class MemoryPathValidatorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->validator = new MemoryPathValidator();
+        $this->validator = new MemoryPathValidator;
     }
 
     #[Test]
@@ -89,7 +89,7 @@ final class MemoryPathValidatorTest extends TestCase
         $this->expectExceptionMessage('Invalid path segment');
 
         $segment = str_repeat('a', 129);
-        $this->validator->validate('/memories/' . $segment, allowRoot: false);
+        $this->validator->validate('/memories/'.$segment, allowRoot: false);
     }
 
     #[Test]
@@ -101,7 +101,7 @@ final class MemoryPathValidatorTest extends TestCase
         $segment = str_repeat('a', 120);
         $path = '/memories';
         while (strlen($path) <= 1024) {
-            $path .= '/' . $segment;
+            $path .= '/'.$segment;
         }
 
         $this->validator->validate($path, allowRoot: false);

@@ -10,7 +10,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 final class SessionHistoryPageResource extends JsonResource
 {
-    /** @param SessionHistoryPage $resource */
     public function __construct(SessionHistoryPage $resource)
     {
         parent::__construct($resource);

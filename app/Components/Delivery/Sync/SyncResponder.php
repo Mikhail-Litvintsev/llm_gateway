@@ -11,8 +11,8 @@ use Illuminate\Http\Response;
 final class SyncResponder
 {
     /**
-     * @param AnthropicResponseEnvelope $envelope Raw Anthropic response (body forwarded byte-for-byte)
-     * @param GatewayHeaders $gateway Gateway metadata emitted as X-Gateway-* headers
+     * @param  AnthropicResponseEnvelope  $envelope  Raw Anthropic response (body forwarded byte-for-byte)
+     * @param  GatewayHeaders  $gateway  Gateway metadata emitted as X-Gateway-* headers
      */
     public function respond(
         AnthropicResponseEnvelope $envelope,

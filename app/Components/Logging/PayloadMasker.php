@@ -14,7 +14,7 @@ final class PayloadMasker
     {
         $decoded = json_decode($payload, true);
 
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             return $payload;
         }
 
@@ -26,6 +26,7 @@ final class PayloadMasker
         foreach ($data as $key => &$value) {
             if (is_string($key) && preg_match(self::SENSITIVE_PATTERN, $key)) {
                 $value = self::REDACTED;
+
                 continue;
             }
 

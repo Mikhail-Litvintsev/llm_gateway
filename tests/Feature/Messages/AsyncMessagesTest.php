@@ -9,13 +9,13 @@ use App\Components\Auth\KeyHasher;
 use App\Jobs\DeliverWebhook;
 use App\Jobs\ProcessAsyncMessage;
 use App\Jobs\Scheduled\RetryFailedWebhooks;
-use App\Models\Client;
 use App\Models\ClaudeWorkspace;
+use App\Models\Client;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Testing\TestResponse;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -33,7 +33,7 @@ final class AsyncMessagesTest extends TestCase
 
         config(['llm.auth.api_key_pepper' => 'test-pepper']);
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
         $hasher = new KeyHasher('test-pepper');
 
@@ -72,7 +72,7 @@ final class AsyncMessagesTest extends TestCase
     private function authenticatedPost(string $uri, array $data): TestResponse
     {
         return $this->withHeaders([
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
             'Content-Type' => 'application/json',
         ])->postJson($uri, $data);
     }
@@ -213,7 +213,7 @@ final class AsyncMessagesTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $handler = new RetryFailedWebhooks();
+        $handler = new RetryFailedWebhooks;
         $handler();
 
         Queue::assertPushed(DeliverWebhook::class, 1);
@@ -250,7 +250,7 @@ final class AsyncMessagesTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $handler = new RetryFailedWebhooks();
+        $handler = new RetryFailedWebhooks;
         $handler();
 
         Queue::assertNotPushed(DeliverWebhook::class);

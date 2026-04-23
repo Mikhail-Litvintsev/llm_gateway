@@ -18,7 +18,7 @@ final class MemoryModelGateRule
             fn (mixed $tool): bool => is_array($tool) && ($tool['type'] ?? '') === ToolTypeCatalog::MEMORY,
         );
 
-        if (!$hasMemory) {
+        if (! $hasMemory) {
             return null;
         }
 

@@ -10,7 +10,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 final class SessionSendMessageResource extends JsonResource
 {
-    /** @param SessionSendMessageResult $resource */
     public function __construct(SessionSendMessageResult $resource)
     {
         parent::__construct($resource);

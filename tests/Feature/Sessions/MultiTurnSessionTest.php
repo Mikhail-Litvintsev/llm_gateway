@@ -34,7 +34,7 @@ final class MultiTurnSessionTest extends TestCase
             ],
         ]);
 
-        $generator = new KeyGenerator();
+        $generator = new KeyGenerator;
         $this->rawApiKey = $generator->generateRawKey();
 
         $hasher = $this->app->make(KeyHasher::class);
@@ -99,7 +99,7 @@ final class MultiTurnSessionTest extends TestCase
         $response = $this->postJson('/api/v1/sessions', [
             'model_alias' => 'claude-sonnet',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(201);
@@ -117,7 +117,7 @@ final class MultiTurnSessionTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hello']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $firstResponse->assertStatus(200);
@@ -138,7 +138,7 @@ final class MultiTurnSessionTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Follow up']],
             'max_tokens' => 1024,
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $secondResponse->assertStatus(200);
@@ -156,7 +156,7 @@ final class MultiTurnSessionTest extends TestCase
             'messages' => [['role' => 'user', 'content' => 'Hello']],
             'model_alias' => 'claude-opus',
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(422);
@@ -169,7 +169,7 @@ final class MultiTurnSessionTest extends TestCase
         $sessionId = $this->createSession();
 
         $this->deleteJson("/api/v1/sessions/{$sessionId}", [], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ])->assertStatus(204);
 
         $this->fakeAnthropicResponse();
@@ -177,7 +177,7 @@ final class MultiTurnSessionTest extends TestCase
         $response = $this->postJson("/api/v1/sessions/{$sessionId}/messages", [
             'messages' => [['role' => 'user', 'content' => 'Hello']],
         ], [
-            'Authorization' => 'Bearer ' . $this->rawApiKey,
+            'Authorization' => 'Bearer '.$this->rawApiKey,
         ]);
 
         $response->assertStatus(404);
