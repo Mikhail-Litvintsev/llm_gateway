@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "mikhail/llm-gateway",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Claude-only API gateway: pass-through Anthropic Messages with sync, async, streaming and batch modes, HMAC-signed webhooks, billing and rate-limiting on Laravel 13.",
+    "keywords": ["laravel", "claude", "llm", "gateway", "anthropic", "webhooks", "api"],
     "license": "MIT",
     "require": {
         "php": "^8.4",
