@@ -24,6 +24,7 @@ class FilesRepository
             ->first();
     }
 
+    /** @return Collection<int, FileRecord> */
     public function listForClient(
         string $clientId,
         int $limit,

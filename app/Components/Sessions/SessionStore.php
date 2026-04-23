@@ -13,6 +13,7 @@ use App\Models\SessionMessage;
 use DateTimeImmutable;
 use Illuminate\Contracts\Encryption\Encrypter;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 final class SessionStore implements SessionStoreContract
@@ -38,12 +39,12 @@ final class SessionStore implements SessionStoreContract
             $session->cache_strategy = $input->cacheStrategy ?? 'none';
             $session->context_management = $input->contextManagement;
             $session->auto_resume = $input->autoResume;
-            $session->expires_at = $input->expiresAt;
+            $session->expires_at = $input->expiresAt !== null ? Carbon::instance($input->expiresAt) : null;
             $session->message_count = 0;
             $session->compaction_count = 0;
             $session->total_input_tokens = 0;
             $session->total_output_tokens = 0;
-            $session->total_cost_usd = 0;
+            $session->total_cost_usd = '0';
             $session->save();
 
             return $this->getMetadata($session);

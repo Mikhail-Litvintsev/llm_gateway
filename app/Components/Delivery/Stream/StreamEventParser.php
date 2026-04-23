@@ -123,6 +123,7 @@ final class StreamEventParser
 
         $this->stopReason = $delta['stop_reason'] ?? $this->stopReason;
         $this->outputTokens = $usage['output_tokens'] ?? $this->outputTokens;
+        $this->thinkingTokens = $usage['thinking_tokens'] ?? $this->thinkingTokens;
 
         if (isset($usage['input_tokens'])) {
             $this->inputTokens = $usage['input_tokens'];

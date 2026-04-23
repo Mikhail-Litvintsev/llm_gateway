@@ -54,11 +54,13 @@ class BatchRecord extends Model
         ];
     }
 
+    /** @return BelongsTo<Client, $this> */
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class, 'client_id');
     }
 
+    /** @return HasMany<BatchItem, $this> */
     public function items(): HasMany
     {
         return $this->hasMany(BatchItem::class, 'batch_id', 'id');

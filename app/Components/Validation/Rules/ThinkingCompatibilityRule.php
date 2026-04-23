@@ -59,7 +59,7 @@ final class ThinkingCompatibilityRule
     private function checkSamplingConstraints(array $payload): ?ValidationError
     {
         if (isset($payload['tool_choice'])) {
-            $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'] ?? null;
+            $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'];
             if (! in_array($tcType, ['auto', 'none'], true)) {
                 return new ValidationError(
                     '/tool_choice',

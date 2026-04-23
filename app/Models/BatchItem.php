@@ -34,6 +34,7 @@ class BatchItem extends Model
         ];
     }
 
+    /** @return BelongsTo<BatchRecord, $this> */
     public function batch(): BelongsTo
     {
         return $this->belongsTo(BatchRecord::class, 'batch_id', 'id');

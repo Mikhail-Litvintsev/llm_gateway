@@ -379,7 +379,7 @@ final readonly class Sessions implements SessionsContract
             ->withOptions(['stream' => true])
             ->post(config('llm.claude.endpoints.messages'));
 
-        $stream = $response->getBody();
+        $stream = $response->toPsrResponse()->getBody();
 
         try {
             $buffer = '';

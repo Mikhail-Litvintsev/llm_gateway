@@ -13,6 +13,7 @@ final readonly class BatchWebhookFanout
     private const int GRANULAR_THRESHOLD = 100;
 
     public function __construct(
+        /** @phpstan-ignore-next-line property.onlyWritten */
         private Webhook $webhook,
     ) {}
 

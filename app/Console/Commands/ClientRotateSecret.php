@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Components\Auth\Auth;
 use App\Models\Client;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\DB;
 
 final class ClientRotateSecret extends Command
 {
@@ -15,10 +14,7 @@ final class ClientRotateSecret extends Command
 
     protected $description = 'Rotate signing secret with 24h grace period for previous secret';
 
-    /**
-     * Move current signing secret to previous, set new current, and print it once.
-     */
-    public function handle(): int
+    public function handle(Auth $auth): int
     {
         $client = Client::find($this->argument('client_id'));
 
@@ -28,18 +24,7 @@ final class ClientRotateSecret extends Command
             return self::FAILURE;
         }
 
-        $plainSecret = 'whsec_'.bin2hex(random_bytes(32));
-        $encryptedSecret = Crypt::encryptString($plainSecret);
-
-        DB::transaction(function () use ($client, $encryptedSecret): void {
-            DB::table('clients')
-                ->where('id', $client->id)
-                ->update([
-                    'signing_secret_previous_encrypted' => $client->signing_secret_current_encrypted,
-                    'signing_secret_current_encrypted' => $encryptedSecret,
-                    'signing_secret_rotated_at' => now(),
-                ]);
-        });
+        $plainSecret = $auth->rotateSigningSecret($client);
 
         $this->info("Signing secret rotated for client id={$client->id} name=\"{$client->name}\"");
         $this->info('================================================================');

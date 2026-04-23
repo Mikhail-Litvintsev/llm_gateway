@@ -67,6 +67,9 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist --optimize-autoloader
 
+      - name: Composer audit (production dependencies)
+        run: composer audit --no-dev --abort-on-failure
+
       - name: Copy .env for tests
         run: cp .env.example .env
 
@@ -88,6 +91,9 @@ jobs:
 
       - name: Run Pint (code style check)
         run: vendor/bin/pint --test
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
       - name: Run tests
         env:

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Components\Claude\Claude;
+use App\Components\Claude\Exceptions\FileNotFoundException;
 use App\Components\Claude\Files\FilePurpose;
 use App\Components\Claude\Files\FilesUploadHandler;
 use App\Http\Controllers\Controller;
@@ -63,12 +64,7 @@ final class FilesController extends Controller
     public function show(Request $request, string $fileId): JsonResponse
     {
         $client = $this->resolveClient($request);
-
-        try {
-            $file = $this->claude->getFile($fileId, (string) $client->id);
-        } catch (RuntimeException $e) {
-            return $this->errorFromException($e);
-        }
+        $file = $this->claude->getFile($fileId, (string) $client->id);
 
         return response()->json($file->toArray());
     }
@@ -79,6 +75,8 @@ final class FilesController extends Controller
 
         try {
             $this->claude->deleteFile($fileId, (string) $client->id);
+        } catch (FileNotFoundException $e) {
+            throw $e;
         } catch (RuntimeException $e) {
             return $this->errorFromException($e);
         }

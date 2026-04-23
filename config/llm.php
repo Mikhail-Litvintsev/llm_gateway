@@ -216,4 +216,13 @@ return [
     'auth' => [
         'api_key_pepper' => env('API_KEY_PEPPER'),
     ],
+
+    'security_headers' => [
+        'X-Content-Type-Options' => env('SECURITY_X_CONTENT_TYPE_OPTIONS', 'nosniff'),
+        'X-Frame-Options' => env('SECURITY_X_FRAME_OPTIONS', 'DENY'),
+        'Strict-Transport-Security' => env(
+            'SECURITY_HSTS',
+            'max-age=31536000; includeSubDomains',
+        ),
+    ],
 ];

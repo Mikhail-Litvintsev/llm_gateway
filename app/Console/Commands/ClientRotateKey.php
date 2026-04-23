@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Components\Auth\KeyGenerator;
-use App\Components\Auth\KeyHasher;
+use App\Components\Auth\Auth;
 use App\Models\Client;
 use Illuminate\Console\Command;
 
@@ -15,10 +14,7 @@ final class ClientRotateKey extends Command
 
     protected $description = 'Rotate API key for a client (atomic, no grace period)';
 
-    /**
-     * Generate a new API key, update the client record, and print the new key once.
-     */
-    public function handle(KeyGenerator $keyGenerator, KeyHasher $keyHasher): int
+    public function handle(Auth $auth): int
     {
         $client = Client::find($this->argument('client_id'));
 
@@ -28,14 +24,7 @@ final class ClientRotateKey extends Command
             return self::FAILURE;
         }
 
-        $plainKey = $keyGenerator->generateRawKey();
-        $hashedKey = $keyHasher->hash($plainKey);
-        $prefix = $keyGenerator->derivePrefix($plainKey);
-
-        $client->update([
-            'api_key_hash' => $hashedKey,
-            'api_key_prefix' => $prefix,
-        ]);
+        $plainKey = $auth->rotateApiKey($client);
 
         $this->info("API key rotated for client id={$client->id} name=\"{$client->name}\"");
         $this->info('================================================================');

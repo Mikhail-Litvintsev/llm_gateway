@@ -60,7 +60,6 @@ class MessageRequestValidator
             'allow_service_tier_auto' => true,
             'allow_fast_mode' => true,
             'require_callback_url' => false,
-            'override_from_session' => [],
         ],
         'count_tokens' => [
             'require_stream' => false,
@@ -143,20 +142,20 @@ class MessageRequestValidator
 
     private function contextRulesCheck(array $payload, ValidationContext $ctx, Client $client, array &$errors): void
     {
-        $rules = self::RULES_PER_CONTEXT[$ctx->value] ?? [];
+        $rules = self::RULES_PER_CONTEXT[$ctx->value];
 
-        if (($rules['forbid_stream'] ?? false) && ($payload['stream'] ?? false) === true) {
+        if ($rules['forbid_stream'] === true && ($payload['stream'] ?? false) === true) {
             $errors[] = new ValidationError('/stream', 'stream_forbidden_in_'.$ctx->value, "Streaming is not allowed in {$ctx->value} context");
         }
 
-        if (($rules['require_stream'] ?? false) && ($payload['stream'] ?? false) !== true) {
+        if ($rules['require_stream'] === true && ($payload['stream'] ?? false) !== true) {
             $errors[] = new ValidationError('/stream', 'stream_required', 'Stream must be true for sync_stream context');
         }
 
         $modelAlias = $payload['model'] ?? '';
         $capabilities = config("llm.claude.model_capabilities.{$modelAlias}", []);
 
-        if ($rules['use_max_output_batch'] ?? false) {
+        if ($rules['use_max_output_batch'] === true) {
             $maxOutput = $capabilities['max_output_batch'] ?? PHP_INT_MAX;
             $requestedMax = $payload['max_tokens'] ?? 0;
             if ($requestedMax > $maxOutput) {
@@ -176,17 +175,6 @@ class MessageRequestValidator
             $lastMessage = end($messages);
             if ($lastMessage && ($lastMessage['role'] ?? '') === 'assistant') {
                 $errors[] = new ValidationError('/messages', 'opus_prefill_not_supported', 'Opus 4.6 does not support assistant prefill (last message cannot be role=assistant)');
-            }
-        }
-
-        $overrides = $rules['override_from_session'] ?? [];
-        foreach ($overrides as $field) {
-            $payloadKey = match ($field) {
-                'model_alias' => 'model',
-                default => $field,
-            };
-            if (isset($payload[$payloadKey])) {
-                $errors[] = new ValidationError("/{$payloadKey}", 'field_overridden_by_session', "Field \"{$payloadKey}\" is managed by session and must not be in payload");
             }
         }
     }

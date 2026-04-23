@@ -11,11 +11,11 @@ use App\Components\Claude\Batch\BatchResultParser;
 use App\Components\Claude\DTO\Batch;
 use App\Components\Claude\DTO\BatchCreateRequest;
 use App\Components\Claude\DTO\ClaudeFile;
-use App\Components\Claude\DTO\ModelInfo;
 use App\Components\Claude\DTO\SendMessageInput;
 use App\Components\Claude\DTO\SendMessageOutput;
 use App\Components\Claude\Enums\BatchStatus;
 use App\Components\Claude\Errors\ErrorMapper;
+use App\Components\Claude\Exceptions\FileNotFoundException;
 use App\Components\Claude\Files\DTO\FileListPage;
 use App\Components\Claude\Files\FilePurpose;
 use App\Components\Claude\Files\FilesDeletionHandler;
@@ -46,7 +46,6 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use LogicException;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final readonly class Claude
@@ -288,10 +287,7 @@ final readonly class Claude
         $record = $this->filesRepository->findForClient($fileId, $clientId);
 
         if ($record === null) {
-            throw new RuntimeException(
-                json_encode(['type' => 'error', 'error' => ['type' => 'not_found_error', 'message' => 'File not found']]),
-                404,
-            );
+            throw new FileNotFoundException($fileId);
         }
 
         $client = $record->client;
@@ -303,10 +299,7 @@ final readonly class Claude
         $record = $this->filesRepository->findForClient($fileId, $clientId);
 
         if ($record === null) {
-            throw new RuntimeException(
-                json_encode(['type' => 'error', 'error' => ['type' => 'not_found_error', 'message' => 'File not found']]),
-                404,
-            );
+            throw new FileNotFoundException($fileId);
         }
 
         return ClaudeFile::fromRecord($record);
@@ -344,17 +337,6 @@ final readonly class Claude
         $files = $records->map(fn (FileRecord $r) => ClaudeFile::fromRecord($r))->values()->all();
 
         return new FileListPage($files, $nextCursor);
-    }
-
-    /** @return ModelInfo[] */
-    public function listModels(): array
-    {
-        throw new LogicException('Not implemented in Phase 1');
-    }
-
-    public function getModel(string $modelId): ModelInfo
-    {
-        throw new LogicException('Not implemented in Phase 1');
     }
 
     private function handleSuccess(

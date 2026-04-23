@@ -49,7 +49,7 @@ class MonitoringController extends Controller
                 ->groupBy('status')
                 ->pluck('count', 'status')
                 ->all(),
-            'current_usage' => method_exists($tracker, 'currentSnapshot') ? $tracker->currentSnapshot() : [],
+            'current_usage' => [],
             'top_spenders_month' => DB::table('clients')
                 ->orderByDesc('current_month_spend_usd')
                 ->limit(5)

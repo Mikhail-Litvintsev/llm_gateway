@@ -84,7 +84,7 @@ final class DevModeStubber
         $model = config("llm.claude.model_aliases.{$request->modelAlias}", $request->modelAlias);
         $words = explode(' ', $this->stubContent);
         $chunks = array_chunk($words, max(1, (int) ceil(count($words) / 5)));
-        $sleepUs = count($chunks) > 0 ? (int) (($this->latencyMs * 1000) / count($chunks)) : 0;
+        $sleepUs = (int) (($this->latencyMs * 1000) / count($chunks));
 
         $inputTokens = (int) ceil(strlen(json_encode($request->messages)) / 4);
         $outputTokens = (int) ceil(strlen($this->stubContent) / 4);

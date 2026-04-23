@@ -1,7 +1,5 @@
 <?php
 
-// TODO: verify output_config field name against docs.claude.com/en/api/messages before Phase 2 merge
-
 declare(strict_types=1);
 
 namespace App\Components\Claude\Payload;
@@ -219,7 +217,7 @@ final class PayloadBuilder
     private function validateSamplingWithThinking(array $payload): void
     {
         if (isset($payload['tool_choice'])) {
-            $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'] ?? null;
+            $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'];
             if (! in_array($tcType, ['auto', 'none'], true)) {
                 throw PayloadBuildException::invalidRequest(
                     "tool_choice must be 'auto' or 'none' when thinking is enabled"
@@ -534,15 +532,7 @@ final class PayloadBuilder
 
     private function serialize(array $payload): string
     {
-        $result = json_encode($payload, self::JSON_OPTIONS);
-
-        if ($result === false) {
-            throw new PayloadBuildException(
-                'Failed to serialize payload: '.json_last_error_msg(),
-            );
-        }
-
-        return $result;
+        return json_encode($payload, self::JSON_OPTIONS);
     }
 
     private const array SERVER_TOOL_TYPES = [
@@ -621,6 +611,7 @@ final class PayloadBuilder
             ToolTypeCatalog::BASH => $this->normaliseBash($tool),
             ToolTypeCatalog::TEXT_EDITOR => $this->normaliseTextEditor($tool),
             ToolTypeCatalog::COMPUTER => $this->normaliseComputer($tool),
+            default => throw PayloadBuildException::invalidRequest("Unsupported server tool type: $type"),
         };
     }
 

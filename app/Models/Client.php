@@ -48,6 +48,7 @@ class Client extends Model
         ];
     }
 
+    /** @return BelongsTo<ClaudeWorkspace, $this> */
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(ClaudeWorkspace::class, 'workspace_id');

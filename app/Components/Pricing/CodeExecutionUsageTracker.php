@@ -23,12 +23,12 @@ final readonly class CodeExecutionUsageTracker
         $pool = $this->poolSize();
 
         return $this->db->transaction(function () use ($workspaceId, $yearMonth, $hoursUsed, $pool): CodeExecutionConsumption {
-            $currentValue = (float) $this->db->table('workspace_feature_usage')
+            $currentValue = (float) ($this->db->table('workspace_feature_usage')
                 ->where('workspace_id', $workspaceId)
                 ->where('year_month', $yearMonth)
                 ->where('feature', self::FEATURE_KEY)
                 ->lockForUpdate()
-                ->value('value') ?? 0.0;
+                ->value('value') ?? 0.0);
 
             $available = max(0.0, $pool - $currentValue);
             $fromFree = max(0.0, min($hoursUsed, $available));
@@ -61,11 +61,11 @@ final readonly class CodeExecutionUsageTracker
         $cached = $this->redis->connection()->get($key);
 
         if ($cached === null) {
-            $dbValue = (float) $this->db->table('workspace_feature_usage')
+            $dbValue = (float) ($this->db->table('workspace_feature_usage')
                 ->where('workspace_id', $workspaceId)
                 ->where('year_month', $yearMonth)
                 ->where('feature', self::FEATURE_KEY)
-                ->value('value') ?? 0.0;
+                ->value('value') ?? 0.0);
 
             $this->redis->connection()->setex($key, $this->secondsUntilMonthEnd(), (string) $dbValue);
             $cached = $dbValue;

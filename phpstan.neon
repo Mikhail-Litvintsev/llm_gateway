@@ -1,0 +1,37 @@
+includes:
+    - ./vendor/larastan/larastan/extension.neon
+parameters:
+    level: 5
+    paths:
+        - app
+    ignoreErrors:
+        # Laravel's Illuminate\Redis\Connections\PhpRedisConnection has @mixin \Redis,
+        # so phpstan resolves method calls against ext-redis stubs instead of Laravel's
+        # variadic signatures. The code is correct at runtime; the stubs are the issue.
+        -
+            identifier: arguments.count
+            path: app/Components/Claude/Batch/Accumulator/BatchAccumulator.php
+        -
+            identifier: argument.type
+            path: app/Components/Claude/Batch/Accumulator/BatchAccumulator.php
+        -
+            identifier: identical.alwaysFalse
+            path: app/Components/Claude/Batch/Accumulator/BatchAccumulator.php
+        -
+            identifier: arguments.count
+            path: app/Console/Commands/Claude/FlushBatchAccumulatorScheduled.php
+        -
+            identifier: argument.type
+            path: app/Console/Commands/Claude/FlushBatchAccumulatorScheduled.php
+        -
+            identifier: foreach.nonIterable
+            path: app/Console/Commands/Claude/FlushBatchAccumulatorScheduled.php
+        -
+            identifier: identical.alwaysFalse
+            path: app/Console/Commands/Claude/FlushBatchAccumulatorScheduled.php
+        -
+            identifier: arguments.count
+            path: app/Jobs/Claude/FlushBatchAccumulatorBucket.php
+        -
+            identifier: argument.type
+            path: app/Jobs/Claude/FlushBatchAccumulatorBucket.php

@@ -6,6 +6,8 @@ namespace App\Components\Auth;
 
 use App\Components\Auth\Exceptions\AuthenticationException;
 use App\Models\Client;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 
 final class Auth
 {
@@ -29,17 +31,36 @@ final class Auth
 
     public function rotateApiKey(Client $client): string
     {
-        throw new \LogicException('Not implemented in Phase 1');
+        $rawKey = $this->generator->generateRawKey();
+        $hash = $this->hasher->hash($rawKey);
+        $prefix = $this->generator->derivePrefix($rawKey);
+
+        DB::transaction(function () use ($client, $hash, $prefix): void {
+            $client->update([
+                'api_key_hash' => $hash,
+                'api_key_prefix' => $prefix,
+            ]);
+        });
+
+        return $rawKey;
     }
 
     public function rotateSigningSecret(Client $client): string
     {
-        throw new \LogicException('Not implemented in Phase 1');
-    }
+        $plainSecret = 'whsec_'.bin2hex(random_bytes(32));
+        $encryptedSecret = Crypt::encryptString($plainSecret);
 
-    public function verifyWebhookSignature(Client $client, string $payload, string $signatureHeader): bool
-    {
-        throw new \LogicException('Not implemented in Phase 1');
+        DB::transaction(function () use ($client, $encryptedSecret): void {
+            DB::table('clients')
+                ->where('id', $client->id)
+                ->update([
+                    'signing_secret_previous_encrypted' => $client->signing_secret_current_encrypted,
+                    'signing_secret_current_encrypted' => $encryptedSecret,
+                    'signing_secret_rotated_at' => now(),
+                ]);
+        });
+
+        return $plainSecret;
     }
 
     private function extractRawKey(string $bearerToken): string
