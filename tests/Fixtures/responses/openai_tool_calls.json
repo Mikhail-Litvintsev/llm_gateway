@@ -1,0 +1,31 @@
+{
+    "id": "chatcmpl-xyz789",
+    "object": "chat.completion",
+    "created": 1700000000,
+    "model": "gpt-4o",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [
+                    {
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\",\"unit\":\"celsius\"}"
+                        }
+                    }
+                ]
+            },
+            "finish_reason": "tool_calls"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 25,
+        "total_tokens": 55
+    }
+}

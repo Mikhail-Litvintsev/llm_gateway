@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_full_001</request_id>
+        <session_id>sess_001</session_id>
+        <step_id>1</step_id>
+        <timestamp>2025-01-01T00:00:00Z</timestamp>
+        <source>unit-test</source>
+        <user_id>user_42</user_id>
+        <priority>high</priority>
+        <custom_field>custom_value</custom_field>
+    </meta>
+    <provider>
+        <name>claude</name>
+        <model>claude-sonnet-4-20250514</model>
+        <fallback>
+            <name>openai</name>
+            <model>gpt-4o</model>
+        </fallback>
+    </provider>
+    <prompt>
+        <block type="system" role="system">You are a helpful assistant.</block>
+        <block type="instruction" role="user">Analyze the following data.</block>
+        <block type="description" role="user" for="data_1">Sales report for Q4</block>
+        <block type="data" role="user" id="data_1" format="csv"><![CDATA[month,revenue
+Oct,100000
+Nov,120000
+Dec,150000]]></block>
+        <block type="constraint" role="user">Keep the response under 200 words.</block>
+        <block type="output_format" role="user">Respond in JSON format.</block>
+    </prompt>
+    <tools tool_choice="auto">
+        <tool>
+            <name>get_weather</name>
+            <description>Get current weather for a city</description>
+            <params>
+                <param name="city" type="string" required="true">
+                    <description>City name</description>
+                </param>
+                <param name="unit" type="string" enum='["celsius","fahrenheit"]'>
+                    <description>Temperature unit</description>
+                </param>
+            </params>
+        </tool>
+    </tools>
+    <parameters>
+        <temperature>0.7</temperature>
+        <max_tokens>2048</max_tokens>
+        <top_p>0.9</top_p>
+        <stop_sequences>["END","STOP"]</stop_sequences>
+    </parameters>
+    <callback>
+        <url>https://example.com/callback</url>
+        <method>POST</method>
+        <headers>
+            <header name="X-Custom">custom-value</header>
+        </headers>
+        <timeout>120</timeout>
+        <retry>
+            <max_attempts>3</max_attempts>
+            <backoff>exponential</backoff>
+            <initial_delay>2</initial_delay>
+        </retry>
+    </callback>
+</llm_request>

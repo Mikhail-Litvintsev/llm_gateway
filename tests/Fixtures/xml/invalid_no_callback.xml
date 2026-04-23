@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_001</request_id>
+    </meta>
+    <prompt>
+        <block type="instruction" role="user">Hello</block>
+    </prompt>
+</llm_request>

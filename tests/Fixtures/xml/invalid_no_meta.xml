@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <prompt>
+        <block type="instruction" role="user">Hello</block>
+    </prompt>
+    <callback>
+        <url>https://example.com/callback</url>
+    </callback>
+</llm_request>

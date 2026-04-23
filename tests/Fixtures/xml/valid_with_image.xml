@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_img_001</request_id>
+    </meta>
+    <prompt>
+        <block type="instruction" role="user">Describe this image.</block>
+        <block type="image" role="user" format="base64" media_type="image/png">iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==</block>
+    </prompt>
+    <callback>
+        <url>https://example.com/callback</url>
+    </callback>
+</llm_request>

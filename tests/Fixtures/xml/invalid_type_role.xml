@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_001</request_id>
+    </meta>
+    <prompt>
+        <block type="system" role="user">System with wrong role.</block>
+    </prompt>
+    <callback>
+        <url>https://example.com/callback</url>
+    </callback>
+</llm_request>

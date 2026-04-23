@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_001</request_id>
+    </meta>
+    <prompt>
+        <block type="data" role="user" id="block_1">First block</block>
+        <block type="data" role="user" id="block_1">Duplicate id</block>
+    </prompt>
+    <callback>
+        <url>https://example.com/callback</url>
+    </callback>
+</llm_request>

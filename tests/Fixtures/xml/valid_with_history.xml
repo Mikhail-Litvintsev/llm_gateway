@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<llm_request version="3.0">
+    <meta>
+        <request_id>req_hist_001</request_id>
+        <session_id>sess_hist</session_id>
+        <step_id>3</step_id>
+    </meta>
+    <prompt>
+        <block type="system" role="system">You are an assistant.</block>
+        <block type="history" role="user">What is 2+2?</block>
+        <block type="history" role="assistant" format="json"><![CDATA[{"content":"Let me calculate that.","tool_calls":[{"id":"tc_1","name":"calculator","arguments":{"expr":"2+2"}}]}]]></block>
+        <block type="history_tool_result" role="tool" tool_call_id="tc_1">4</block>
+        <block type="history" role="user">Thanks! Now what is 3+3?</block>
+        <block type="history" role="assistant">3+3 equals 6.</block>
+        <block type="instruction" role="user">What is 10+10?</block>
+    </prompt>
+    <tools tool_choice="auto">
+        <tool>
+            <name>calculator</name>
+            <description>Evaluate math expression</description>
+            <params>
+                <param name="expr" type="string" required="true">
+                    <description>Math expression</description>
+                </param>
+            </params>
+        </tool>
+    </tools>
+    <callback>
+        <url>https://example.com/callback</url>
+    </callback>
+</llm_request>
