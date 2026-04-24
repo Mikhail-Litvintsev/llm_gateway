@@ -17,8 +17,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class ProcessAsyncMessage implements ShouldQueue
 {
@@ -27,11 +30,27 @@ final class ProcessAsyncMessage implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
     public int $timeout = 600;
 
     public function __construct(public readonly string $requestId) {}
+
+    /**
+     * @return array<int, int>
+     */
+    public function backoff(): array
+    {
+        return [60, 300, 900];
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [new WithoutOverlapping($this->requestId)];
+    }
 
     public function handle(
         Claude $claude,
@@ -48,6 +67,21 @@ final class ProcessAsyncMessage implements ShouldQueue
 
         $requestRow = DB::table('requests')->where('request_id', $this->requestId)->first();
         if (! $requestRow) {
+            return;
+        }
+
+        if ($this->hasPersistedSuccessResponse()) {
+            if (in_array($pending->status, ['delivered', 'exhausted'], true)) {
+                return;
+            }
+
+            $logging->finalizeFromPersistedRaw($this->requestId);
+            DB::table('async_pending')->where('request_id', $this->requestId)->update([
+                'status' => 'processing',
+                'updated_at' => now(),
+            ]);
+            DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+
             return;
         }
 
@@ -78,10 +112,6 @@ final class ProcessAsyncMessage implements ShouldQueue
             featuresUsed: $features,
         ));
 
-        if ($output->isSuccess) {
-            $billing->recordSpend($client, $output->costUsd);
-        }
-
         $logging->updateAsyncRecord(
             $this->requestId,
             $output,
@@ -89,10 +119,74 @@ final class ProcessAsyncMessage implements ShouldQueue
             $features,
         );
 
+        if ($output->isSuccess) {
+            $billing->recordSpend($client, $output->costUsd);
+        }
+
         DB::table('async_pending')->where('request_id', $this->requestId)->update([
             'status' => 'processing',
             'updated_at' => now(),
         ]);
+
+        DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+    }
+
+    private function hasPersistedSuccessResponse(): bool
+    {
+        return DB::table('request_raw')
+            ->where('request_id', $this->requestId)
+            ->whereNotNull('response_payload')
+            ->exists();
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::channel('llm')->error('ProcessAsyncMessage::failed', [
+            'request_id' => $this->requestId,
+            'exception' => $exception::class,
+            'message' => $exception->getMessage(),
+        ]);
+
+        if ($this->hasPersistedSuccessResponse()) {
+            $asyncStatus = DB::table('async_pending')->where('request_id', $this->requestId)->value('status');
+            if (in_array($asyncStatus, ['delivered', 'exhausted'], true)) {
+                return;
+            }
+
+            app(Logging::class)->finalizeFromPersistedRaw($this->requestId);
+
+            DB::table('async_pending')->where('request_id', $this->requestId)->update([
+                'status' => 'processing',
+                'updated_at' => now(),
+            ]);
+            DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+
+            return;
+        }
+
+        $currentStatus = DB::table('requests')->where('request_id', $this->requestId)->value('status');
+
+        $isFinalizedSuccess = in_array($currentStatus, [
+            RequestStatus::Completed->value,
+            RequestStatus::CompletedDisconnected->value,
+        ], true);
+
+        $isFinalizedFailure = in_array($currentStatus, [
+            RequestStatus::FailedClientError->value,
+            RequestStatus::FailedServerError->value,
+            RequestStatus::FailedCallbackDelivery->value,
+        ], true);
+
+        if (! $isFinalizedSuccess && ! $isFinalizedFailure) {
+            DB::table('requests')
+                ->where('request_id', $this->requestId)
+                ->update([
+                    'status' => RequestStatus::FailedServerError->value,
+                    'error_type' => 'async_job_failed',
+                    'error_message' => $exception->getMessage(),
+                    'completed_at' => now(),
+                ]);
+        }
 
         DeliverWebhook::dispatch($this->requestId)->onQueue('default');
     }

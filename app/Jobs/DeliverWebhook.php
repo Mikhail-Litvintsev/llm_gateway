@@ -12,6 +12,8 @@ use App\Models\Client;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +29,7 @@ final class DeliverWebhook implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 30;
+    public int $timeout = 60;
 
     public function __construct(public readonly string $requestId) {}
 
@@ -61,16 +63,16 @@ final class DeliverWebhook implements ShouldQueue
             $response = Http::withHeaders($signed->headers)
                 ->withBody($signed->body, 'application/json')
                 ->timeout((int) config('llm.webhook.request_timeout_seconds', 30))
+                ->connectTimeout((int) config('llm.webhook.connect_timeout_seconds', 5))
                 ->post($pending->callback_url);
 
             $success = $response->successful();
-        } catch (\Throwable) {
+        } catch (ConnectionException|RequestException) {
             $success = false;
         }
 
         $newAttempts = $pending->callback_attempts + 1;
-        $maxAttempts = (int) ($client->allowed_features['webhook_max_attempts']
-            ?? config('llm.webhook.default_max_attempts', 10));
+        $maxAttempts = $this->resolveMaxAttempts($client);
 
         if ($success) {
             DB::table('async_pending')->where('request_id', $this->requestId)->update([
@@ -109,6 +111,62 @@ final class DeliverWebhook implements ShouldQueue
             'next_attempt_at' => now()->addSeconds($delay),
             'updated_at' => now(),
         ]);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $pending = DB::table('async_pending')->where('request_id', $this->requestId)->first();
+        if (! $pending || in_array($pending->status, ['delivered', 'exhausted'], true)) {
+            Log::channel('llm')->error('DeliverWebhook::failed — no actionable pending record', [
+                'request_id' => $this->requestId,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        $requestRow = DB::table('requests')->where('request_id', $this->requestId)->first();
+        $client = $requestRow ? Client::find($requestRow->client_id) : null;
+
+        $newAttempts = $pending->callback_attempts + 1;
+        $maxAttempts = $this->resolveMaxAttempts($client);
+
+        Log::channel('llm')->error('DeliverWebhook::failed — scheduling recovery', [
+            'request_id' => $this->requestId,
+            'exception' => $exception::class,
+            'message' => $exception->getMessage(),
+            'attempts' => $newAttempts,
+            'max_attempts' => $maxAttempts,
+        ]);
+
+        if ($newAttempts >= $maxAttempts) {
+            DB::table('async_pending')->where('request_id', $this->requestId)->update([
+                'status' => 'exhausted',
+                'callback_attempts' => $newAttempts,
+                'next_attempt_at' => null,
+                'updated_at' => now(),
+            ]);
+            DB::table('requests')->where('request_id', $this->requestId)->update([
+                'status' => RequestStatus::FailedCallbackDelivery->value,
+            ]);
+
+            return;
+        }
+
+        $delay = $this->computeBackoffDelaySeconds($newAttempts);
+        DB::table('async_pending')->where('request_id', $this->requestId)->update([
+            'status' => 'processing',
+            'callback_attempts' => $newAttempts,
+            'next_attempt_at' => now()->addSeconds($delay),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function resolveMaxAttempts(?Client $client): int
+    {
+        return (int) ($client?->allowed_features['webhook_max_attempts']
+            ?? config('llm.webhook.default_max_attempts', 10));
     }
 
     private function buildEnvelope(object $requestRow, Client $client): WebhookEnvelope

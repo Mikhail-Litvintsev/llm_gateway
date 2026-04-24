@@ -18,11 +18,16 @@ final class RetryFailedWebhooks
             ->where('callback_attempts', '>', 0)
             ->where('callback_attempts', '<', $maxAttempts)
             ->where('next_attempt_at', '<=', now())
-            ->limit(500)
+            ->limit($this->batchSize())
             ->pluck('request_id');
 
         foreach ($requestIds as $requestId) {
             DeliverWebhook::dispatch($requestId)->onQueue('default');
         }
+    }
+
+    private function batchSize(): int
+    {
+        return (int) config('llm.webhook.scheduler_batch_size', 500);
     }
 }

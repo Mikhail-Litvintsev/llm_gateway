@@ -48,7 +48,7 @@ use Illuminate\Support\Facades\Http;
 use LogicException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-final readonly class Claude
+class Claude
 {
     public function __construct(
         private WorkspaceResolver $workspaces,

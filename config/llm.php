@@ -200,6 +200,8 @@ return [
         'initial_delay_seconds' => 10,
         'max_delay_seconds' => 3600,
         'request_timeout_seconds' => 30,
+        'connect_timeout_seconds' => max(1, (int) env('WEBHOOK_CONNECT_TIMEOUT_SECONDS', 5)),
+        'scheduler_batch_size' => max(1, (int) env('WEBHOOK_SCHEDULER_BATCH_SIZE', 500)),
         'signing_algorithm' => 'sha256',
     ],
 
