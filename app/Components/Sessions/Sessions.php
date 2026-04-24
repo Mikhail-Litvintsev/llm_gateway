@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Components\Sessions;
 
 use App\Components\Authorization\Authorization;
+use App\Components\Billing\CostEstimator;
 use App\Components\Claude\Claude;
 use App\Components\Claude\DTO\MessageResponse;
 use App\Components\Claude\DTO\SendMessageInput;
@@ -45,6 +46,7 @@ final readonly class Sessions implements SessionsContract
         private MemoryHandler $memoryHandler,
         private WorkspaceResolver $workspaceResolver,
         private ModelResolver $modelResolver,
+        private CostEstimator $costEstimator,
     ) {}
 
     public function create(SessionCreateInput $input): SessionMetadata
@@ -291,12 +293,17 @@ final readonly class Sessions implements SessionsContract
     private function callClaudeSync(array $payload, Client $client, array $featuresUsed): MessageResponse
     {
         $builtPayload = $this->payloadBuilder->build($payload, $client);
+        $modelAlias = $payload['model'] ?? $client->default_model_alias ?? config('llm.claude.default_model_alias');
+        $tokenEstimate = $this->costEstimator->estimateTokens($payload, $modelAlias);
 
         $sendInput = new SendMessageInput(
             payload: $builtPayload,
             client: $client,
             gatewayRequestId: 'sess_sync_'.bin2hex(random_bytes(8)),
             featuresUsed: $featuresUsed,
+            estimatedInputTokens: $tokenEstimate->inputTokens,
+            estimatedOutputTokens: $tokenEstimate->outputTokens,
+            expectedCacheReadTokens: $tokenEstimate->cacheReadTokens,
         );
 
         $output = $this->claude->sendMessage($sendInput);

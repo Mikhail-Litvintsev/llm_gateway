@@ -4,16 +4,30 @@ declare(strict_types=1);
 
 namespace App\Components\Billing;
 
+use App\Components\Billing\DTO\TokenEstimate;
+
 final class CostEstimator
 {
     public function estimate(array $payload, string $modelAlias): float
     {
+        $tokens = $this->estimateTokens($payload, $modelAlias);
+
+        return $this->estimateFromTokens($tokens->inputTokens, $tokens->outputTokens, $modelAlias);
+    }
+
+    public function estimateTokens(array $payload, string $modelAlias): TokenEstimate
+    {
         $chars = $this->countCharsInPayload($payload);
         $charsPerToken = (float) config('llm.claude.caching.estimation_chars_per_token', 3.5);
         $inputTokens = (int) ceil($chars / $charsPerToken);
-        $outputTokens = (int) ceil(($payload['max_tokens'] ?? 1024) * 0.5);
+        $outputFactor = (float) config('llm.claude.count_tokens.output_tokens_factor', 0.5);
+        $outputTokens = (int) ceil(($payload['max_tokens'] ?? 1024) * $outputFactor);
 
-        return $this->estimateFromTokens($inputTokens, $outputTokens, $modelAlias);
+        return new TokenEstimate(
+            inputTokens: $inputTokens,
+            outputTokens: $outputTokens,
+            cacheReadTokens: 0,
+        );
     }
 
     public function estimateFromTokens(int $inputTokens, int $outputTokens, string $modelAlias): float

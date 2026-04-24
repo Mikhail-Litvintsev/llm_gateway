@@ -14,5 +14,8 @@ final readonly class SendMessageInput
         public Client $client,
         public string $gatewayRequestId,
         public array $featuresUsed,
+        public int $estimatedInputTokens = 0,
+        public int $estimatedOutputTokens = 0,
+        public int $expectedCacheReadTokens = 0,
     ) {}
 }

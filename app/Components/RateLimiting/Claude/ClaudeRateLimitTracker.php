@@ -9,7 +9,7 @@ use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\Redis;
 
-final class ClaudeRateLimitTracker
+class ClaudeRateLimitTracker
 {
     private readonly int $safetyMarginPct;
 

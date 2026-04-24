@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use App\Components\Sessions\Contracts\SessionsContract;
 use App\Components\Sessions\DTO\SessionCreateInput;
 use App\Components\Sessions\DTO\SessionSendMessageInput;
@@ -79,26 +80,41 @@ final class SessionsController extends Controller
             stream: $validated['stream'] ?? false,
         );
 
-        if ($input->stream) {
-            $generator = $this->sessions->sendStream($session->session_id, $input);
+        try {
+            if ($input->stream) {
+                $generator = $this->sessions->sendStream($session->session_id, $input);
 
-            return new StreamedResponse(function () use ($generator) {
-                foreach ($generator as $frame) {
-                    echo $frame;
-                    if (ob_get_level() > 0) {
-                        ob_flush();
+                return new StreamedResponse(function () use ($generator) {
+                    foreach ($generator as $frame) {
+                        echo $frame;
+                        if (ob_get_level() > 0) {
+                            ob_flush();
+                        }
+                        flush();
                     }
-                    flush();
-                }
-            }, 200, [
-                'Content-Type' => 'text/event-stream',
-                'Cache-Control' => 'no-cache, no-store',
-                'X-Accel-Buffering' => 'no',
-                'Connection' => 'keep-alive',
-            ]);
+                }, 200, [
+                    'Content-Type' => 'text/event-stream',
+                    'Cache-Control' => 'no-cache, no-store',
+                    'X-Accel-Buffering' => 'no',
+                    'Connection' => 'keep-alive',
+                ]);
+            }
+
+            $result = $this->sessions->sendSync($session->session_id, $input);
+        } catch (RateLimitExceededException $e) {
+            return new JsonResponse(
+                [
+                    'type' => 'error',
+                    'error' => [
+                        'type' => 'rate_limit_error',
+                        'message' => 'Rate limit pre-emptively exceeded on axis: '.$e->axis,
+                    ],
+                ],
+                429,
+                ['Retry-After' => (string) $e->retryAfterSeconds],
+            );
         }
 
-        $result = $this->sessions->sendSync($session->session_id, $input);
         $response = (new SessionSendMessageResource($result))->response();
 
         if (in_array('auto_resume_limit_reached', $result->warnings, true)) {

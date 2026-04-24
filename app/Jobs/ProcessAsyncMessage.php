@@ -6,13 +6,16 @@ namespace App\Jobs;
 
 use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
+use App\Components\Billing\CostEstimator;
 use App\Components\Caching\Caching;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageInput;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Logging\Enums\RequestStatus;
 use App\Components\Logging\Logging;
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use App\Models\Client;
+use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -23,7 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-final class ProcessAsyncMessage implements ShouldQueue
+class ProcessAsyncMessage implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -52,6 +55,11 @@ final class ProcessAsyncMessage implements ShouldQueue
         return [new WithoutOverlapping($this->requestId)];
     }
 
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addMinutes(10)->toDateTimeImmutable();
+    }
+
     public function handle(
         MessageSender $claude,
         PayloadBuilder $payloadBuilder,
@@ -59,6 +67,7 @@ final class ProcessAsyncMessage implements ShouldQueue
         Billing $billing,
         Logging $logging,
         Caching $caching,
+        CostEstimator $costEstimator,
     ): void {
         $pending = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         if (! $pending) {
@@ -104,13 +113,30 @@ final class ProcessAsyncMessage implements ShouldQueue
         $builtPayload = $payloadBuilder->build($payload, $client);
         $features = $this->extractFeatures($payload);
         $features[] = 'webhook';
+        $tokenEstimate = $costEstimator->estimateTokens($payload, $modelAlias);
 
-        $output = $claude->sendMessage(new SendMessageInput(
-            payload: $builtPayload,
-            client: $client,
-            gatewayRequestId: $this->requestId,
-            featuresUsed: $features,
-        ));
+        try {
+            $output = $claude->sendMessage(new SendMessageInput(
+                payload: $builtPayload,
+                client: $client,
+                gatewayRequestId: $this->requestId,
+                featuresUsed: $features,
+                estimatedInputTokens: $tokenEstimate->inputTokens,
+                estimatedOutputTokens: $tokenEstimate->outputTokens,
+                expectedCacheReadTokens: $tokenEstimate->cacheReadTokens,
+            ));
+        } catch (RateLimitExceededException $e) {
+            Log::channel('llm')->info('ProcessAsyncMessage::rateLimit::release', [
+                'request_id' => $this->requestId,
+                'axis' => $e->axis,
+                'retry_after_seconds' => $e->retryAfterSeconds,
+                'attempt' => $this->attempts(),
+            ]);
+
+            $this->release($e->retryAfterSeconds);
+
+            return;
+        }
 
         $logging->updateAsyncRecord(
             $this->requestId,

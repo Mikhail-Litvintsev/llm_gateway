@@ -6,10 +6,15 @@ namespace Tests\Unit\Jobs;
 
 use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
+use App\Components\Billing\CostEstimator;
 use App\Components\Caching\Caching;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageOutput;
 use App\Components\Claude\Payload\PayloadBuilder;
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
+use DateTimeImmutable;
+use Illuminate\Support\Facades\Bus;
+use Mockery;
 use App\Components\Delivery\Sync\DTO\AnthropicResponseEnvelope;
 use App\Components\Logging\Enums\RequestStatus;
 use App\Components\Logging\Logging;
@@ -58,6 +63,7 @@ final class ProcessAsyncMessageTest extends TestCase
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
+            app(CostEstimator::class),
         );
 
         $this->assertSame(
@@ -94,6 +100,7 @@ final class ProcessAsyncMessageTest extends TestCase
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
+            app(CostEstimator::class),
         );
 
         Queue::assertPushed(DeliverWebhook::class, 1);
@@ -122,6 +129,7 @@ final class ProcessAsyncMessageTest extends TestCase
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
+            app(CostEstimator::class),
         );
 
         Queue::assertPushed(DeliverWebhook::class);
@@ -146,6 +154,7 @@ final class ProcessAsyncMessageTest extends TestCase
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
+            app(CostEstimator::class),
         );
 
         $this->assertSame(
@@ -191,6 +200,55 @@ final class ProcessAsyncMessageTest extends TestCase
 
         $this->assertSame([60, 300, 900], $job->backoff());
         $this->assertSame(3, $job->tries);
+    }
+
+    #[Test]
+    public function retry_until_returns_datetime_immutable_10_minutes_from_now(): void
+    {
+        $job = new ProcessAsyncMessage('req_ru_'.bin2hex(random_bytes(6)));
+
+        $before = now();
+        $deadline = $job->retryUntil();
+        $after = now();
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $deadline);
+        $this->assertGreaterThanOrEqual(
+            $before->copy()->addMinutes(10)->getTimestamp() - 1,
+            $deadline->getTimestamp(),
+        );
+        $this->assertLessThanOrEqual(
+            $after->copy()->addMinutes(10)->getTimestamp() + 1,
+            $deadline->getTimestamp(),
+        );
+    }
+
+    #[Test]
+    public function handle_releases_with_retry_after_seconds_on_rate_limit(): void
+    {
+        Bus::fake([DeliverWebhook::class]);
+
+        $messageSender = Mockery::mock(MessageSender::class);
+        $messageSender->shouldReceive('sendMessage')
+            ->once()
+            ->andThrow(new RateLimitExceededException('input_tokens', 30));
+
+        $job = Mockery::mock(ProcessAsyncMessage::class.'[release,attempts]', [$this->requestId])->makePartial();
+        $job->shouldReceive('release')->once()->with(30);
+        $job->shouldReceive('attempts')->andReturn(1);
+
+        $job->handle(
+            $messageSender,
+            app(PayloadBuilder::class),
+            app(Authorization::class),
+            app(Billing::class),
+            app(Logging::class),
+            app(Caching::class),
+            app(CostEstimator::class),
+        );
+
+        Bus::assertNotDispatched(DeliverWebhook::class);
+        $this->assertDatabaseMissing('request_raw', ['request_id' => $this->requestId]);
+        $this->assertDatabaseMissing('request_usage', ['request_id' => $this->requestId]);
     }
 
     private function seedClient(): Client

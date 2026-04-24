@@ -36,6 +36,7 @@ use App\Components\Logging\Logging;
 use App\Components\Pricing\CostCalculator;
 use App\Components\Pricing\DTO\CostBreakdown;
 use App\Components\RateLimiting\Claude\ClaudeRateLimitTracker;
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use App\Components\RateLimiting\Claude\RateLimitNamespace;
 use App\Components\Routing\WorkspaceResolver;
 use App\Jobs\Claude\SubmitBatchToAnthropic;
@@ -44,10 +45,12 @@ use App\Models\FileRecord;
 use DateTimeImmutable;
 use Generator;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use LogicException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 final readonly class Claude implements MessageSender
 {
@@ -65,23 +68,63 @@ final readonly class Claude implements MessageSender
         private FilesUploadHandler $filesUploadHandler,
         private FilesDeletionHandler $filesDeletionHandler,
         private FilesRepository $filesRepository,
+        private EndpointRegistry $endpoints,
     ) {}
 
     /**
      * @throws ConnectionException
+     * @throws RateLimitExceededException
      * @throws \JsonException
      */
     public function sendMessage(SendMessageInput $input): SendMessageOutput
     {
         $workspace = $this->workspaces->resolveForClient($input->client);
+
+        $this->rateLimitTracker->canProceed(
+            RateLimitNamespace::Messages,
+            md5($workspace->apiKey),
+            $input->payload->modelSnapshot,
+            estimatedInputTokens: $input->estimatedInputTokens,
+            estimatedOutputTokens: $input->estimatedOutputTokens,
+            expectedCacheReadTokens: $input->expectedCacheReadTokens,
+        );
+
         $startMs = (int) (microtime(true) * 1000);
 
         $response = Http::withHeaders($this->buildHeaders($workspace->apiKey, $input->payload->betaHeaders))
             ->withBody($input->payload->jsonBody, 'application/json')
             ->timeout(config('llm.claude.timeouts.request'))
             ->connectTimeout(config('llm.claude.timeouts.connect'))
-            ->retry(0)
-            ->post(config('llm.claude.endpoints.messages'));
+            ->retry(
+                times: (int) config('llm.claude.http_retry.max_attempts'),
+                sleepMilliseconds: function (int $attempt, ?Throwable $exception): int {
+                    if ($exception instanceof RequestException && $exception->response !== null) {
+                        $retryAfter = (int) $exception->response->header('retry-after');
+                        if ($retryAfter > 0) {
+                            return $retryAfter * 1000;
+                        }
+                    }
+
+                    $baseDelayMs = (int) config('llm.claude.http_retry.base_delay_ms');
+
+                    return $baseDelayMs * (2 ** ($attempt - 1));
+                },
+                when: function (Throwable $exception): bool {
+                    if ($exception instanceof ConnectionException) {
+                        return true;
+                    }
+                    if ($exception instanceof RequestException && $exception->response !== null) {
+                        /** @var int[] $retryableStatuses */
+                        $retryableStatuses = (array) config('llm.claude.http_retry.retryable_statuses');
+
+                        return in_array($exception->response->status(), $retryableStatuses, true);
+                    }
+
+                    return false;
+                },
+                throw: false,
+            )
+            ->post($this->endpoints->messages());
 
         $latencyMs = ((int) (microtime(true) * 1000)) - $startMs;
 
@@ -106,6 +149,8 @@ final readonly class Claude implements MessageSender
     /**
      * Streams an Anthropic Messages API call via SSE pass-through.
      * Billing and logging happen in the $onComplete callback after the stream ends.
+     *
+     * @throws RateLimitExceededException
      */
     public function streamMessage(
         SendMessageInput $input,
@@ -115,6 +160,17 @@ final readonly class Claude implements MessageSender
         string $modelSnapshot,
         array $features,
     ): StreamedResponse {
+        $workspace = $this->workspaces->resolveForClient($client);
+
+        $this->rateLimitTracker->canProceed(
+            RateLimitNamespace::Messages,
+            md5($workspace->apiKey),
+            $modelSnapshot,
+            estimatedInputTokens: $input->estimatedInputTokens,
+            estimatedOutputTokens: $input->estimatedOutputTokens,
+            expectedCacheReadTokens: $input->expectedCacheReadTokens,
+        );
+
         $onComplete = function (StreamOutcome $outcome) use ($input, $client, $gatewayRequestId, $modelAlias, $modelSnapshot): void {
             if ($outcome->httpStatusCode === 200 && $outcome->completed) {
                 $this->billing->recordSpend($client, $outcome->costUsd);
@@ -171,15 +227,27 @@ final readonly class Claude implements MessageSender
      * count_tokens invocations are intentionally not persisted to `requests`;
      * add logging in a later phase if observability demand exceeds cost.
      * No billing, no spend mutation.
+     *
+     * @throws RateLimitExceededException
      */
     public function countTokens(BuiltPayload $payload, Client $client): AnthropicResponseEnvelope
     {
         $workspace = $this->workspaces->resolveForClient($client);
 
+        $this->rateLimitTracker->canProceed(
+            RateLimitNamespace::Messages,
+            md5($workspace->apiKey),
+            $payload->modelSnapshot,
+            estimatedInputTokens: 0,
+            estimatedOutputTokens: 0,
+            expectedCacheReadTokens: 0,
+        );
+
         $response = Http::withHeaders($this->buildHeaders($workspace->apiKey, $payload->betaHeaders))
             ->withBody($payload->jsonBody, 'application/json')
             ->timeout(config('llm.claude.timeouts.request'))
-            ->post(config('llm.claude.endpoints.count_tokens'));
+            ->connectTimeout(config('llm.claude.timeouts.connect'))
+            ->post($this->endpoints->countTokens());
 
         $headers = $this->filterAnthropicHeaders($response->headers());
 
@@ -217,14 +285,11 @@ final readonly class Claude implements MessageSender
     public function getBatch(string $anthropicBatchId, Client $client): Batch
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches').'/'.$anthropicBatchId;
 
-        $response = Http::withHeaders([
-            'x-api-key' => $workspace->apiKey,
-            'anthropic-version' => config('llm.claude.anthropic_version'),
-        ])
-            ->timeout(config('llm.claude.timeouts.connect'))
-            ->get($endpoint);
+        $response = Http::withHeaders($this->buildHeaders($workspace->apiKey))
+            ->timeout(config('llm.claude.timeouts.request'))
+            ->connectTimeout(config('llm.claude.timeouts.connect'))
+            ->get($this->endpoints->batch($anthropicBatchId));
 
         if (! $response->successful()) {
             throw new LogicException("Failed to get batch: HTTP {$response->status()}");
@@ -255,22 +320,43 @@ final readonly class Claude implements MessageSender
     public function getBatchResults(string $anthropicBatchId, Client $client): Generator
     {
         $workspace = $this->workspaces->resolveForClient($client);
-        $endpoint = config('llm.claude.endpoints.batches').'/'.$anthropicBatchId.'/results';
 
-        $response = Http::withHeaders([
-            'x-api-key' => $workspace->apiKey,
-            'anthropic-version' => config('llm.claude.anthropic_version'),
-            'accept' => 'application/x-ndjson',
-        ])
+        $response = Http::withHeaders($this->buildHeaders(
+            $workspace->apiKey,
+            extraHeaders: ['accept' => 'application/x-ndjson'],
+        ))
+            ->withOptions(['stream' => true])
             ->timeout(config('llm.claude.timeouts.request'))
             ->connectTimeout(config('llm.claude.timeouts.connect'))
-            ->get($endpoint);
+            ->get($this->endpoints->batchResults($anthropicBatchId));
 
-        $body = $response->body();
         $parser = new BatchResultParser;
+        $body = $response->toPsrResponse()->getBody();
+        $buffer = '';
 
-        foreach (explode("\n", $body) as $line) {
-            $result = $parser->parseLine($line);
+        while (! $body->eof()) {
+            $chunk = $body->read(8192);
+
+            if ($chunk === '') {
+                continue;
+            }
+
+            $buffer .= $chunk;
+
+            while (($pos = strpos($buffer, "\n")) !== false) {
+                $line = substr($buffer, 0, $pos);
+                $buffer = substr($buffer, $pos + 1);
+
+                $result = $parser->parseLine($line);
+
+                if ($result !== null) {
+                    yield $result;
+                }
+            }
+        }
+
+        if ($buffer !== '') {
+            $result = $parser->parseLine($buffer);
 
             if ($result !== null) {
                 yield $result;
@@ -399,12 +485,16 @@ final readonly class Claude implements MessageSender
         );
     }
 
-    /** @param string[] $betaHeaders */
-    private function buildHeaders(string $apiKey, array $betaHeaders): array
+    /**
+     * @param  string[]  $betaHeaders
+     * @param  array<string, string>  $extraHeaders
+     * @return array<string, string>
+     */
+    private function buildHeaders(string $apiKey, array $betaHeaders = [], array $extraHeaders = []): array
     {
         $headers = [
             'x-api-key' => $apiKey,
-            'anthropic-version' => config('llm.claude.anthropic_version'),
+            'anthropic-version' => (string) config('llm.claude.anthropic_version'),
             'content-type' => 'application/json',
         ];
 
@@ -413,7 +503,7 @@ final readonly class Claude implements MessageSender
             $headers['anthropic-beta'] = $beta;
         }
 
-        return $headers;
+        return array_merge($headers, $extraHeaders);
     }
 
     private function filterAnthropicHeaders(array $responseHeaders): array

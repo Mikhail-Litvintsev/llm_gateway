@@ -19,6 +19,7 @@ use App\Components\Logging\Enums\Endpoint;
 use App\Components\Logging\Enums\Mode;
 use App\Components\Logging\Enums\RequestStatus;
 use App\Components\Logging\Logging;
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use App\Components\Routing\ModelResolver;
 use App\Components\Validation\DTO\ValidationResult;
 use App\Components\Validation\MessageRequestValidator;
@@ -91,6 +92,7 @@ final class MessagesController extends Controller
         $payload = $injection->payload;
 
         $builtPayload = $this->payloadBuilder->build($payload, $client);
+        $tokenEstimate = $this->costEstimator->estimateTokens($payload, $modelAlias);
 
         try {
             $output = $this->claude->sendMessage(new SendMessageInput(
@@ -98,7 +100,12 @@ final class MessagesController extends Controller
                 client: $client,
                 gatewayRequestId: $gatewayRequestId,
                 featuresUsed: $features,
+                estimatedInputTokens: $tokenEstimate->inputTokens,
+                estimatedOutputTokens: $tokenEstimate->outputTokens,
+                expectedCacheReadTokens: $tokenEstimate->cacheReadTokens,
             ));
+        } catch (RateLimitExceededException $e) {
+            return $this->failRateLimit($client, $gatewayRequestId, $modelAlias, $resolved->snapshot, $payload, $e);
         } catch (ConnectionException) {
             return $this->failConnection($client, $gatewayRequestId, $modelAlias, $resolved->snapshot, $startedAt, $builtPayload->jsonBody);
         }
@@ -268,7 +275,20 @@ final class MessagesController extends Controller
         }
 
         $builtPayload = $this->payloadBuilder->build($payload, $client);
-        $envelope = $this->claude->countTokens($builtPayload, $client);
+
+        try {
+            $envelope = $this->claude->countTokens($builtPayload, $client);
+        } catch (RateLimitExceededException $e) {
+            $response = $this->errorResponse(
+                429,
+                'rate_limit_error',
+                'Rate limit pre-emptively exceeded on axis: '.$e->axis,
+                $gatewayRequestId,
+            );
+            $response->headers->set('Retry-After', (string) $e->retryAfterSeconds);
+
+            return $response;
+        }
 
         $inputTokens = json_decode($envelope->rawBody, true)['input_tokens'] ?? 0;
         $maxTokens = (int) ($payload['max_tokens'] ?? 1024);
@@ -386,20 +406,28 @@ final class MessagesController extends Controller
         $payload = $injection->payload;
 
         $builtPayload = $this->payloadBuilder->build($payload, $client);
+        $tokenEstimate = $this->costEstimator->estimateTokens($payload, $modelAlias);
 
-        return $this->claude->streamMessage(
-            input: new SendMessageInput(
-                payload: $builtPayload,
+        try {
+            return $this->claude->streamMessage(
+                input: new SendMessageInput(
+                    payload: $builtPayload,
+                    client: $client,
+                    gatewayRequestId: $gatewayRequestId,
+                    featuresUsed: $features,
+                    estimatedInputTokens: $tokenEstimate->inputTokens,
+                    estimatedOutputTokens: $tokenEstimate->outputTokens,
+                    expectedCacheReadTokens: $tokenEstimate->cacheReadTokens,
+                ),
                 client: $client,
                 gatewayRequestId: $gatewayRequestId,
-                featuresUsed: $features,
-            ),
-            client: $client,
-            gatewayRequestId: $gatewayRequestId,
-            modelAlias: $modelAlias,
-            modelSnapshot: $resolved->snapshot,
-            features: $features,
-        );
+                modelAlias: $modelAlias,
+                modelSnapshot: $resolved->snapshot,
+                features: $features,
+            );
+        } catch (RateLimitExceededException $e) {
+            return $this->failRateLimit($client, $gatewayRequestId, $modelAlias, $resolved->snapshot, $payload, $e);
+        }
     }
 
     private function failValidation(
@@ -443,6 +471,34 @@ final class MessagesController extends Controller
         $this->logFailure($client, $gatewayRequestId, RequestStatus::FailedAuth, 402, 'billing_error', $message, $payload, $modelAlias, $modelSnapshot);
 
         return $this->errorResponse(402, 'billing_error', $message, $gatewayRequestId);
+    }
+
+    private function failRateLimit(
+        Client $client,
+        string $gatewayRequestId,
+        string $modelAlias,
+        string $modelSnapshot,
+        array $payload,
+        RateLimitExceededException $exception,
+    ): Response {
+        $message = 'Rate limit pre-emptively exceeded on axis: '.$exception->axis;
+
+        $this->logFailure(
+            $client,
+            $gatewayRequestId,
+            RequestStatus::FailedClientError,
+            429,
+            'rate_limit_error',
+            $message,
+            $payload,
+            $modelAlias,
+            $modelSnapshot,
+        );
+
+        $response = $this->errorResponse(429, 'rate_limit_error', $message, $gatewayRequestId);
+        $response->headers->set('Retry-After', (string) $exception->retryAfterSeconds);
+
+        return $response;
     }
 
     private function failConnection(
