@@ -22,8 +22,9 @@ services:
     environment:
       GATEWAY_URL: http://llm_nginx:80
       GATEWAY_API_KEY: "${GATEWAY_API_KEY}"
-    entrypoint: ["k6", "run", "gateway-overhead.js"]
+    entrypoint: ["k6", "run", "--summary-trend-stats", "avg,min,med,max,p(90),p(95),p(99)", "gateway-overhead.js"]
 
 networks:
   llm_internal:
     external: true
+    name: llm_gateway_llm_internal

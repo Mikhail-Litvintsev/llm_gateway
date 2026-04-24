@@ -142,11 +142,21 @@ INTEGRATION_ANTHROPIC=1 ANTHROPIC_API_KEY_TEST=sk-ant-... \
 ### Cost
 Each full run costs roughly $0.001 (Haiku, single-digit tokens per test). Safe to run in CI daily.
 
+## Performance
+
+Gateway overhead — the time the gateway spends between accepting a request and returning a response, excluding the upstream Anthropic call — measured with the k6 scenario at [`benchmarks/gateway-overhead.js`](benchmarks/gateway-overhead.js):
+
+- p50 = **77 ms**
+- p95 = **115 ms**
+- p99 = **136 ms**
+
+Method, environment, host specs and raw numbers: [`benchmarks/results.md`](benchmarks/results.md). End-to-end latency is dominated by the Anthropic response (typically 1–5+ seconds) and is outside the gateway's control — see [ADR-008](documentation/decisions.md#adr-008-p95-overhead-measurement-not-full-response-latency).
+
 ## Known limitations
 
-- Gateway-overhead p95 is not yet measured; the benchmark lives in Phase 7.5. End-to-end p95 is dominated by Anthropic response latency (1–5+ seconds) and is outside the gateway's control.
-- A number of items from the senior review are still open: async retry policy (Phase 3), preventive rate-limit wiring (Phase 4), static analysis via PHPStan (Phase 2). The backlog is tracked in `tasks/senior-review-fixes/task.md`.
-- Laravel Horizon is intentionally not used. Queue monitoring is done through Artisan commands and the `failed_jobs` table (see Phase 3.5, ADR-002).
+- Laravel Horizon is intentionally not used. Queue monitoring is done through Artisan commands and the `failed_jobs` table (see [ADR-002](documentation/decisions.md#adr-002-no-horizon)).
+- End-to-end p95 is dominated by Anthropic response latency (1–5+ seconds) and is outside the gateway's control. The published numbers above measure gateway overhead only.
+- Async idempotency relies on a pre-call DB check; a narrow race window exists between the upstream HTTP response and the first `request_raw` insert. See [ADR-005](documentation/decisions.md#adr-005-no-idempotency-key-for-anthropic-messages-api).
 
 ## AI-assisted development
 

@@ -41,7 +41,7 @@ if (!apiKey) {
 }
 
 function send() {
-  const res = http.post(`${baseUrl}/v1/messages`, payload, {
+  const res = http.post(`${baseUrl}/api/v1/messages`, payload, {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

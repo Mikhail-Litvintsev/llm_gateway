@@ -110,7 +110,7 @@ Format inspired by Michael Nygard's ADR template. Dates are in ISO-8601.
 - **Decision:** The reported metric is **gateway overhead**: the time between request arrival and response emission, excluding the upstream call. Measured with `benchmarks/gateway-overhead.js` (k6) against a deterministic mock-upstream that returns a fixed Anthropic-shaped body. Published numbers: p50/p95/p99 from the steady-state phase.
 - **Consequences:** Numbers are reproducible, gateway-attributable, and honest. A reader understands what "fast" means here. Cost: does not speak to the client's wall-clock experience — that is a function of Anthropic load.
 - **Revisit trigger:** Infrastructure moves to a region with materially different network properties (cross-continent), OR hot-path logging is re-architected (e.g. async logging via queue) — both warrant a re-measurement.
-- **Numbers:** `{{PLACEHOLDER: numbers filled in step_07}}`. Source: [`benchmarks/results.md`](../benchmarks/results.md).
+- **Numbers:** As of 2026-04-25: p50 = 77 ms, p95 = 115 ms, p99 = 136 ms (AMD Ryzen 7 4800H, 16 threads, 20 VU × 2 min, mock upstream). Source: [`benchmarks/results.md`](../benchmarks/results.md).
 - **Related:** `benchmarks/`, README "Performance" section.
 
 ---
