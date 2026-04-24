@@ -1,12 +1,12 @@
 <?php
 
-use App\Http\Controllers\Api\SessionsController;
 use App\Http\Controllers\Api\V1\BatchesController;
 use App\Http\Controllers\Api\V1\ClientUsageController;
 use App\Http\Controllers\Api\V1\FilesController;
 use App\Http\Controllers\Api\V1\MessagesBatchAccumulatorController;
 use App\Http\Controllers\Api\V1\MessagesController;
 use App\Http\Controllers\Api\V1\ModelsController;
+use App\Http\Controllers\Api\V1\SessionsController;
 use App\Http\Controllers\Api\V1\SkillsController;
 use Illuminate\Support\Facades\Route;
 

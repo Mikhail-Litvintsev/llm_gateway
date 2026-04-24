@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -52,5 +53,11 @@ class Client extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(ClaudeWorkspace::class, 'workspace_id');
+    }
+
+    /** @return HasMany<ClientCallbackUrl, $this> */
+    public function callbackUrls(): HasMany
+    {
+        return $this->hasMany(ClientCallbackUrl::class);
     }
 }

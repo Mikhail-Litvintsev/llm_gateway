@@ -164,9 +164,7 @@ final class FetchBatchResults implements ShouldQueue
         if ($totalCost > 0) {
             DB::table('clients')
                 ->where('id', $batch->client_id)
-                ->update([
-                    'current_month_spend_usd' => DB::raw("current_month_spend_usd + $totalCost"),
-                ]);
+                ->increment('current_month_spend_usd', $totalCost);
         }
     }
 
