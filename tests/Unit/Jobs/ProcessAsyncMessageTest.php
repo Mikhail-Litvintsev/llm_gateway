@@ -7,7 +7,7 @@ namespace Tests\Unit\Jobs;
 use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
 use App\Components\Caching\Caching;
-use App\Components\Claude\Claude;
+use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageOutput;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Delivery\Sync\DTO\AnthropicResponseEnvelope;
@@ -52,7 +52,7 @@ final class ProcessAsyncMessageTest extends TestCase
 
         $job = new ProcessAsyncMessage($this->requestId);
         $job->handle(
-            app(Claude::class),
+            app(MessageSender::class),
             app(PayloadBuilder::class),
             app(Authorization::class),
             app(Billing::class),
@@ -82,7 +82,7 @@ final class ProcessAsyncMessageTest extends TestCase
         Queue::fake([DeliverWebhook::class]);
         $this->persistPriorSuccessResponse($this->requestId);
 
-        $claudeSpy = $this->mock(Claude::class, function (MockInterface $mock): void {
+        $claudeSpy = $this->mock(MessageSender::class, function (MockInterface $mock): void {
             $mock->shouldNotReceive('sendMessage');
         });
 
@@ -108,7 +108,7 @@ final class ProcessAsyncMessageTest extends TestCase
     {
         Queue::fake([DeliverWebhook::class]);
 
-        $claudeSpy = $this->mock(Claude::class, function (MockInterface $mock): void {
+        $claudeSpy = $this->mock(MessageSender::class, function (MockInterface $mock): void {
             $mock->shouldReceive('sendMessage')
                 ->once()
                 ->andReturn($this->makeSuccessOutput());
@@ -132,7 +132,7 @@ final class ProcessAsyncMessageTest extends TestCase
     {
         Queue::fake([DeliverWebhook::class]);
 
-        $this->mock(Claude::class, function (MockInterface $mock): void {
+        $this->mock(MessageSender::class, function (MockInterface $mock): void {
             $mock->shouldReceive('sendMessage')
                 ->once()
                 ->andReturn($this->makeErrorOutput(httpStatus: 400, errorType: 'invalid_request_error'));
@@ -140,7 +140,7 @@ final class ProcessAsyncMessageTest extends TestCase
 
         $job = new ProcessAsyncMessage($this->requestId);
         $job->handle(
-            app(Claude::class),
+            app(MessageSender::class),
             app(PayloadBuilder::class),
             app(Authorization::class),
             app(Billing::class),
@@ -161,7 +161,7 @@ final class ProcessAsyncMessageTest extends TestCase
         Queue::fake([DeliverWebhook::class]);
 
         $job = new ProcessAsyncMessage($this->requestId);
-        $job->failed(new RuntimeException('simulated upstream crash'));
+        $job->failed(new RuntimeException('simulated upstream crash'), app(Logging::class));
 
         $row = DB::table('requests')->where('request_id', $this->requestId)->first();
         $this->assertSame(RequestStatus::FailedServerError->value, $row->status);
@@ -264,7 +264,7 @@ final class ProcessAsyncMessageTest extends TestCase
 
     private function mockClaudeSuccess(): void
     {
-        $this->mock(Claude::class, function (MockInterface $mock): void {
+        $this->mock(MessageSender::class, function (MockInterface $mock): void {
             $mock->shouldReceive('sendMessage')
                 ->once()
                 ->andReturn($this->makeSuccessOutput());

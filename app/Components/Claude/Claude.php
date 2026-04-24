@@ -8,6 +8,7 @@ use App\Components\Billing\Billing;
 use App\Components\Claude\Batch\BatchPersister;
 use App\Components\Claude\Batch\BatchPreValidator;
 use App\Components\Claude\Batch\BatchResultParser;
+use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\Batch;
 use App\Components\Claude\DTO\BatchCreateRequest;
 use App\Components\Claude\DTO\ClaudeFile;
@@ -48,7 +49,7 @@ use Illuminate\Support\Facades\Http;
 use LogicException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class Claude
+final readonly class Claude implements MessageSender
 {
     public function __construct(
         private WorkspaceResolver $workspaces,

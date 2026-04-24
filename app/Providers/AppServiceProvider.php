@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Components\Auth\KeyHasher;
 use App\Components\Claude\Beta\BetaHeaderRegistry;
+use App\Components\Claude\Claude;
+use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\Payload\FileSourceResolver;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Pricing\CostCalculator;
@@ -36,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SessionStoreContract::class, SessionStore::class);
         $this->app->bind(SessionsContract::class, Sessions::class);
         $this->app->bind(SkillsRepository::class, EloquentSkillsRepository::class);
+        $this->app->bind(MessageSender::class, Claude::class);
 
         $this->app->singleton(UsageReportFetcher::class, fn () => new UsageReportFetcher(
             $this->app->make(Factory::class),

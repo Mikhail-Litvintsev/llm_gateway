@@ -7,7 +7,7 @@ namespace App\Jobs;
 use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
 use App\Components\Caching\Caching;
-use App\Components\Claude\Claude;
+use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageInput;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Logging\Enums\RequestStatus;
@@ -53,7 +53,7 @@ final class ProcessAsyncMessage implements ShouldQueue
     }
 
     public function handle(
-        Claude $claude,
+        MessageSender $claude,
         PayloadBuilder $payloadBuilder,
         Authorization $authorization,
         Billing $billing,
@@ -139,7 +139,7 @@ final class ProcessAsyncMessage implements ShouldQueue
             ->exists();
     }
 
-    public function failed(Throwable $exception): void
+    public function failed(Throwable $exception, Logging $logging): void
     {
         Log::channel('llm')->error('ProcessAsyncMessage::failed', [
             'request_id' => $this->requestId,
@@ -153,7 +153,7 @@ final class ProcessAsyncMessage implements ShouldQueue
                 return;
             }
 
-            app(Logging::class)->finalizeFromPersistedRaw($this->requestId);
+            $logging->finalizeFromPersistedRaw($this->requestId);
 
             DB::table('async_pending')->where('request_id', $this->requestId)->update([
                 'status' => 'processing',
