@@ -169,6 +169,8 @@ This repository was built with Claude Code as an AI pair-programmer. The `CLAUDE
 - [Operational runbook](documentation/operational_runbook.md) — on-call procedures, migrations, rollbacks.
 - [Microservices setup](documentation/microservices_setup_guide.md) — deployment outside Docker Compose.
 - [Commands](documentation/commands.md) — Artisan command reference.
+- [Architectural decisions](documentation/decisions.md) — ADR-001…010: non-obvious choices and their trade-offs.
+- [Benchmarks](benchmarks/readme.md) — gateway overhead measurement method and reproducible results.
 
 ## License
 
