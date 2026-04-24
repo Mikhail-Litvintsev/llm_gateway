@@ -9,6 +9,8 @@ use App\Components\Logging\Enums\RequestStatus;
 use App\Jobs\DeliverWebhook;
 use App\Models\ClaudeWorkspace;
 use App\Models\Client;
+use App\Repositories\AsyncPendingRepository;
+use App\Repositories\RequestRepository;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -47,7 +49,7 @@ final class DeliverWebhookTest extends TestCase
         ]);
 
         $job = new DeliverWebhook($this->requestId);
-        $job->handle(app(Webhook::class));
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         $this->assertSame('delivered', $row->status);
@@ -65,7 +67,7 @@ final class DeliverWebhookTest extends TestCase
         ]);
 
         $job = new DeliverWebhook($this->requestId);
-        $job->handle(app(Webhook::class));
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         $this->assertSame('processing', $row->status);
@@ -85,7 +87,7 @@ final class DeliverWebhookTest extends TestCase
         ]);
 
         $job = new DeliverWebhook($this->requestId);
-        $job->handle(app(Webhook::class));
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         $this->assertSame('processing', $row->status);
@@ -104,7 +106,7 @@ final class DeliverWebhookTest extends TestCase
         ]);
 
         $job = new DeliverWebhook($this->requestId);
-        $job->handle(app(Webhook::class));
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         $this->assertSame('exhausted', $row->status);
@@ -170,7 +172,7 @@ final class DeliverWebhookTest extends TestCase
         Http::fake([$this->callbackUrl => Http::response('', 200)]);
 
         $job = new DeliverWebhook($this->requestId);
-        $job->handle(app(Webhook::class));
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         Http::assertNothingSent();
     }

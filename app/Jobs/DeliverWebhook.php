@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Components\Delivery\Webhook\DTO\SignedRequest;
 use App\Components\Delivery\Webhook\DTO\WebhookEnvelope;
 use App\Components\Delivery\Webhook\Enums\WebhookEvent;
 use App\Components\Delivery\Webhook\Webhook;
 use App\Components\Logging\Enums\RequestStatus;
+use App\Models\ApiRequest;
 use App\Models\Client;
+use App\Repositories\AsyncPendingRepository;
+use App\Repositories\DTO\RequestDetails;
+use App\Repositories\RequestRepository;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,9 +21,9 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class DeliverWebhook implements ShouldQueue
 {
@@ -39,84 +44,51 @@ final class DeliverWebhook implements ShouldQueue
      * On failure with attempts remaining: status → processing, next_attempt_at set with exponential backoff.
      * On exhaustion (max attempts reached): status → exhausted, requests.status → failed_callback_delivery.
      */
-    public function handle(Webhook $webhook): void
-    {
-        $pending = DB::table('async_pending')->where('request_id', $this->requestId)->first();
-        if (! $pending || in_array($pending->status, ['delivered', 'exhausted'], true)) {
+    public function handle(
+        Webhook $webhook,
+        RequestRepository $requests,
+        AsyncPendingRepository $pending,
+    ): void {
+        $pendingRow = $pending->find($this->requestId);
+        if ($pendingRow === null || in_array($pendingRow->status, ['delivered', 'exhausted'], true)) {
             return;
         }
 
-        $requestRow = DB::table('requests')->where('request_id', $this->requestId)->first();
-        if (! $requestRow) {
+        $details = $requests->findDetails($this->requestId, true);
+        if (! $details->exists()) {
             return;
         }
 
-        $client = Client::find($requestRow->client_id);
-        if (! $client) {
+        $client = Client::find($details->request->client_id);
+        if ($client === null) {
             return;
         }
 
-        $envelope = $this->buildEnvelope($requestRow, $client);
+        $envelope = $this->buildEnvelope($details, $client);
         $signed = $webhook->buildSignedRequest($client, $envelope);
 
-        try {
-            $response = Http::withHeaders($signed->headers)
-                ->withBody($signed->body, 'application/json')
-                ->timeout((int) config('llm.webhook.request_timeout_seconds', 30))
-                ->connectTimeout((int) config('llm.webhook.connect_timeout_seconds', 5))
-                ->post($pending->callback_url);
-
-            $success = $response->successful();
-        } catch (ConnectionException|RequestException) {
-            $success = false;
-        }
-
-        $newAttempts = $pending->callback_attempts + 1;
+        $success = $this->attemptDelivery($signed, $pendingRow->callback_url);
+        $newAttempts = $pendingRow->callback_attempts + 1;
         $maxAttempts = $this->resolveMaxAttempts($client);
 
-        if ($success) {
-            DB::table('async_pending')->where('request_id', $this->requestId)->update([
-                'status' => 'delivered',
-                'callback_attempts' => $newAttempts,
-                'next_attempt_at' => null,
-                'updated_at' => now(),
-            ]);
-
-            return;
-        }
-
-        if ($newAttempts >= $maxAttempts) {
-            DB::table('async_pending')->where('request_id', $this->requestId)->update([
-                'status' => 'exhausted',
-                'callback_attempts' => $newAttempts,
-                'next_attempt_at' => null,
-                'updated_at' => now(),
-            ]);
-            DB::table('requests')->where('request_id', $this->requestId)->update([
-                'status' => RequestStatus::FailedCallbackDelivery->value,
-            ]);
-            Log::channel('llm')->error('Webhook delivery exhausted', [
-                'request_id' => $this->requestId,
-                'client_id' => $client->id,
-                'attempts' => $newAttempts,
-            ]);
-
-            return;
-        }
-
-        $delay = $this->computeBackoffDelaySeconds($newAttempts);
-        DB::table('async_pending')->where('request_id', $this->requestId)->update([
-            'status' => 'processing',
-            'callback_attempts' => $newAttempts,
-            'next_attempt_at' => now()->addSeconds($delay),
-            'updated_at' => now(),
-        ]);
+        match (true) {
+            $success => $pending->markDelivered($this->requestId, $newAttempts),
+            $newAttempts >= $maxAttempts => $this->markExhausted($client, $newAttempts, $requests, $pending),
+            default => $pending->scheduleRetry(
+                $this->requestId,
+                $newAttempts,
+                now()->addSeconds($this->computeBackoffDelaySeconds($newAttempts)),
+            ),
+        };
     }
 
-    public function failed(\Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
-        $pending = DB::table('async_pending')->where('request_id', $this->requestId)->first();
-        if (! $pending || in_array($pending->status, ['delivered', 'exhausted'], true)) {
+        $requests = app(RequestRepository::class);
+        $pending = app(AsyncPendingRepository::class);
+
+        $pendingRow = $pending->find($this->requestId);
+        if ($pendingRow === null || in_array($pendingRow->status, ['delivered', 'exhausted'], true)) {
             Log::channel('llm')->error('DeliverWebhook::failed — no actionable pending record', [
                 'request_id' => $this->requestId,
                 'exception' => $exception::class,
@@ -126,40 +98,67 @@ final class DeliverWebhook implements ShouldQueue
             return;
         }
 
-        $requestRow = DB::table('requests')->where('request_id', $this->requestId)->first();
-        $client = $requestRow ? Client::find($requestRow->client_id) : null;
+        $requestRow = $requests->find($this->requestId);
+        $client = $requestRow !== null ? Client::find($requestRow->client_id) : null;
 
-        $newAttempts = $pending->callback_attempts + 1;
+        $newAttempts = $pendingRow->callback_attempts + 1;
         $maxAttempts = $this->resolveMaxAttempts($client);
 
+        $this->logFailureRecovery($exception, $newAttempts, $maxAttempts);
+
+        if ($newAttempts >= $maxAttempts) {
+            $pending->markExhausted($this->requestId, $newAttempts);
+            $requests->setStatus($this->requestId, RequestStatus::FailedCallbackDelivery->value);
+
+            return;
+        }
+
+        $pending->scheduleRetry(
+            $this->requestId,
+            $newAttempts,
+            now()->addSeconds($this->computeBackoffDelaySeconds($newAttempts)),
+        );
+    }
+
+    private function attemptDelivery(SignedRequest $signed, string $callbackUrl): bool
+    {
+        try {
+            $response = Http::withHeaders($signed->headers)
+                ->withBody($signed->body, 'application/json')
+                ->timeout((int) config('llm.webhook.request_timeout_seconds', 30))
+                ->connectTimeout((int) config('llm.webhook.connect_timeout_seconds', 5))
+                ->post($callbackUrl);
+
+            return $response->successful();
+        } catch (ConnectionException|RequestException) {
+            return false;
+        }
+    }
+
+    private function markExhausted(
+        Client $client,
+        int $newAttempts,
+        RequestRepository $requests,
+        AsyncPendingRepository $pending,
+    ): void {
+        $pending->markExhausted($this->requestId, $newAttempts);
+        $requests->setStatus($this->requestId, RequestStatus::FailedCallbackDelivery->value);
+
+        Log::channel('llm')->error('Webhook delivery exhausted', [
+            'request_id' => $this->requestId,
+            'client_id' => $client->id,
+            'attempts' => $newAttempts,
+        ]);
+    }
+
+    private function logFailureRecovery(Throwable $exception, int $newAttempts, int $maxAttempts): void
+    {
         Log::channel('llm')->error('DeliverWebhook::failed — scheduling recovery', [
             'request_id' => $this->requestId,
             'exception' => $exception::class,
             'message' => $exception->getMessage(),
             'attempts' => $newAttempts,
             'max_attempts' => $maxAttempts,
-        ]);
-
-        if ($newAttempts >= $maxAttempts) {
-            DB::table('async_pending')->where('request_id', $this->requestId)->update([
-                'status' => 'exhausted',
-                'callback_attempts' => $newAttempts,
-                'next_attempt_at' => null,
-                'updated_at' => now(),
-            ]);
-            DB::table('requests')->where('request_id', $this->requestId)->update([
-                'status' => RequestStatus::FailedCallbackDelivery->value,
-            ]);
-
-            return;
-        }
-
-        $delay = $this->computeBackoffDelaySeconds($newAttempts);
-        DB::table('async_pending')->where('request_id', $this->requestId)->update([
-            'status' => 'processing',
-            'callback_attempts' => $newAttempts,
-            'next_attempt_at' => now()->addSeconds($delay),
-            'updated_at' => now(),
         ]);
     }
 
@@ -169,12 +168,14 @@ final class DeliverWebhook implements ShouldQueue
             ?? config('llm.webhook.default_max_attempts', 10));
     }
 
-    private function buildEnvelope(object $requestRow, Client $client): WebhookEnvelope
+    private function buildEnvelope(RequestDetails $details, Client $client): WebhookEnvelope
     {
-        $usage = DB::table('request_usage')->where('request_id', $requestRow->request_id)->first();
-        $raw = DB::table('request_raw')->where('request_id', $requestRow->request_id)->first();
+        $request = $details->request;
+        assert($request instanceof ApiRequest);
+        $usage = $details->usage;
+        $raw = $details->raw;
 
-        $isCompleted = in_array($requestRow->status, [
+        $isCompleted = in_array($request->status, [
             RequestStatus::Completed->value,
             RequestStatus::CompletedDisconnected->value,
         ], true);
@@ -182,15 +183,16 @@ final class DeliverWebhook implements ShouldQueue
         $event = $isCompleted ? WebhookEvent::MessageCompleted : WebhookEvent::MessageFailed;
 
         $anthropicResponse = null;
-        if ($isCompleted && $raw?->response_payload) {
-            $anthropicResponse = json_decode($raw->response_payload, true);
+        if ($isCompleted && $raw?->response_payload !== null) {
+            $decoded = json_decode($raw->response_payload, true);
+            $anthropicResponse = is_array($decoded) ? $decoded : null;
         }
 
         $error = null;
         if (! $isCompleted) {
             $error = [
-                'type' => $requestRow->error_type ?? 'unknown',
-                'message' => $requestRow->error_message ?? 'Unknown error',
+                'type' => $request->error_type ?? 'unknown',
+                'message' => $request->error_message ?? 'Unknown error',
             ];
         }
 
@@ -198,16 +200,16 @@ final class DeliverWebhook implements ShouldQueue
         $currentSpend = (float) $client->current_month_spend_usd;
 
         return new WebhookEnvelope(
-            requestId: $requestRow->request_id,
+            requestId: $request->request_id,
             event: $event,
-            anthropicRequestId: $requestRow->anthropic_request_id,
-            modelAlias: $requestRow->model_alias,
-            modelSnapshot: $requestRow->model_snapshot,
+            anthropicRequestId: $request->anthropic_request_id,
+            modelAlias: $request->model_alias,
+            modelSnapshot: $request->model_snapshot,
             anthropicResponse: $anthropicResponse,
             error: $error,
             billing: [
-                'cost_usd' => $usage ? (float) $usage->cost_usd : 0.0,
-                'cost_breakdown' => $usage?->cost_breakdown ? json_decode($usage->cost_breakdown, true) : [],
+                'cost_usd' => $usage !== null ? (float) $usage->cost_usd : 0.0,
+                'cost_breakdown' => $usage !== null ? ($usage->cost_breakdown ?? []) : [],
                 'monthly_spend_after_usd' => $currentSpend,
                 'monthly_spend_remaining_usd' => $capUsd !== null ? max(0.0, $capUsd - $currentSpend) : null,
             ],

@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
 use App\Components\Billing\CostEstimator;
 use App\Components\Caching\Caching;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageInput;
+use App\Components\Claude\Payload\FeatureDetector;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Logging\Enums\RequestStatus;
 use App\Components\Logging\Logging;
 use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
+use App\Models\AsyncPending;
 use App\Models\Client;
+use App\Repositories\AsyncPendingRepository;
+use App\Repositories\RequestRepository;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,34 +66,25 @@ class ProcessAsyncMessage implements ShouldQueue
     public function handle(
         MessageSender $claude,
         PayloadBuilder $payloadBuilder,
-        Authorization $authorization,
         Billing $billing,
         Logging $logging,
         Caching $caching,
         CostEstimator $costEstimator,
+        FeatureDetector $featureDetector,
+        RequestRepository $requests,
+        AsyncPendingRepository $pending,
     ): void {
-        $pending = DB::table('async_pending')->where('request_id', $this->requestId)->first();
-        if (! $pending) {
+        $pendingRow = $pending->find($this->requestId);
+        if ($pendingRow === null) {
             return;
         }
 
-        $requestRow = DB::table('requests')->where('request_id', $this->requestId)->first();
-        if (! $requestRow) {
+        $requestRow = $requests->find($this->requestId);
+        if ($requestRow === null) {
             return;
         }
 
-        if ($this->hasPersistedSuccessResponse()) {
-            if (in_array($pending->status, ['delivered', 'exhausted'], true)) {
-                return;
-            }
-
-            $logging->finalizeFromPersistedRaw($this->requestId);
-            DB::table('async_pending')->where('request_id', $this->requestId)->update([
-                'status' => 'processing',
-                'updated_at' => now(),
-            ]);
-            DeliverWebhook::dispatch($this->requestId)->onQueue('default');
-
+        if ($this->handleIdempotentFinalize($pendingRow, $logging, $pending)) {
             return;
         }
 
@@ -99,21 +93,75 @@ class ProcessAsyncMessage implements ShouldQueue
         }
 
         $client = Client::find($requestRow->client_id);
-        if (! $client) {
+        if ($client === null) {
             return;
         }
 
-        $payload = json_decode($pending->payload_for_anthropic, true, 512, JSON_THROW_ON_ERROR);
+        $this->executeClaudeAndFinalize(
+            $client, $claude, $payloadBuilder, $billing, $logging, $caching,
+            $costEstimator, $featureDetector, $pendingRow, $requests, $pending,
+        );
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        $logging = app(Logging::class);
+        $requests = app(RequestRepository::class);
+        $pending = app(AsyncPendingRepository::class);
+
+        $this->logFailure($exception);
+
+        if ($this->tryIdempotentFinalizeAfterFailure($logging, $pending)) {
+            return;
+        }
+
+        $this->transitionToFailedIfNotFinalized($exception, $requests);
+
+        DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+    }
+
+    private function handleIdempotentFinalize(
+        AsyncPending $pendingRow,
+        Logging $logging,
+        AsyncPendingRepository $pending,
+    ): bool {
+        if (! $this->hasPersistedSuccessResponse()) {
+            return false;
+        }
+
+        if (in_array($pendingRow->status, ['delivered', 'exhausted'], true)) {
+            return true;
+        }
+
+        $logging->finalizeFromPersistedRaw($this->requestId);
+        $pending->markProcessing($this->requestId);
+        DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+
+        return true;
+    }
+
+    private function executeClaudeAndFinalize(
+        Client $client,
+        MessageSender $claude,
+        PayloadBuilder $payloadBuilder,
+        Billing $billing,
+        Logging $logging,
+        Caching $caching,
+        CostEstimator $costEstimator,
+        FeatureDetector $featureDetector,
+        AsyncPending $pendingRow,
+        RequestRepository $requests,
+        AsyncPendingRepository $pending,
+    ): void {
+        $payload = json_decode($pendingRow->payload_for_anthropic, true, 512, JSON_THROW_ON_ERROR);
         $modelAlias = $payload['model'] ?? $client->default_model_alias ?? config('llm.claude.default_model_alias');
 
-        $this->markInProgress();
+        $this->markInProgress($requests, $pending);
 
-        $injection = $caching->autoInject($payload, $modelAlias, $client);
-        $payload = $injection->payload;
-        $builtPayload = $payloadBuilder->build($payload, $client);
-        $features = $this->extractFeatures($payload);
-        $features[] = 'webhook';
-        $tokenEstimate = $costEstimator->estimateTokens($payload, $modelAlias);
+        $injected = $caching->autoInject($payload, $modelAlias, $client)->payload;
+        $builtPayload = $payloadBuilder->build($injected, $client);
+        $features = [...$featureDetector->detect($injected), 'webhook'];
+        $tokenEstimate = $costEstimator->estimateTokens($injected, $modelAlias);
 
         try {
             $output = $claude->sendMessage(new SendMessageInput(
@@ -126,35 +174,87 @@ class ProcessAsyncMessage implements ShouldQueue
                 expectedCacheReadTokens: $tokenEstimate->cacheReadTokens,
             ));
         } catch (RateLimitExceededException $e) {
-            Log::channel('llm')->info('ProcessAsyncMessage::rateLimit::release', [
-                'request_id' => $this->requestId,
-                'axis' => $e->axis,
-                'retry_after_seconds' => $e->retryAfterSeconds,
-                'attempt' => $this->attempts(),
-            ]);
-
+            $this->logRateLimitRelease($e);
             $this->release($e->retryAfterSeconds);
 
             return;
         }
 
-        $logging->updateAsyncRecord(
-            $this->requestId,
-            $output,
-            $builtPayload->decodedPayload,
-            $features,
-        );
+        $logging->updateAsyncRecord($this->requestId, $output, $builtPayload->decodedPayload, $features);
 
         if ($output->isSuccess) {
             $billing->recordSpend($client, $output->costUsd);
         }
 
-        DB::table('async_pending')->where('request_id', $this->requestId)->update([
-            'status' => 'processing',
-            'updated_at' => now(),
-        ]);
-
+        $pending->markProcessing($this->requestId);
         DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+    }
+
+    private function markInProgress(RequestRepository $requests, AsyncPendingRepository $pending): void
+    {
+        $pending->markProcessing($this->requestId);
+        $requests->markInProgress($this->requestId, RequestStatus::InProgress->value);
+    }
+
+    private function logRateLimitRelease(RateLimitExceededException $e): void
+    {
+        Log::channel('llm')->info('ProcessAsyncMessage::rateLimit::release', [
+            'request_id' => $this->requestId,
+            'axis' => $e->axis,
+            'retry_after_seconds' => $e->retryAfterSeconds,
+            'attempt' => $this->attempts(),
+        ]);
+    }
+
+    private function logFailure(Throwable $exception): void
+    {
+        Log::channel('llm')->error('ProcessAsyncMessage::failed', [
+            'request_id' => $this->requestId,
+            'exception' => $exception::class,
+            'message' => $exception->getMessage(),
+        ]);
+    }
+
+    private function tryIdempotentFinalizeAfterFailure(Logging $logging, AsyncPendingRepository $pending): bool
+    {
+        if (! $this->hasPersistedSuccessResponse()) {
+            return false;
+        }
+
+        $asyncStatus = $pending->getStatus($this->requestId);
+        if (in_array($asyncStatus, ['delivered', 'exhausted'], true)) {
+            return true;
+        }
+
+        $logging->finalizeFromPersistedRaw($this->requestId);
+        $pending->markProcessing($this->requestId);
+        DeliverWebhook::dispatch($this->requestId)->onQueue('default');
+
+        return true;
+    }
+
+    private function transitionToFailedIfNotFinalized(Throwable $exception, RequestRepository $requests): void
+    {
+        $currentStatus = $requests->getStatus($this->requestId);
+
+        $isFinalized = in_array($currentStatus, [
+            RequestStatus::Completed->value,
+            RequestStatus::CompletedDisconnected->value,
+            RequestStatus::FailedClientError->value,
+            RequestStatus::FailedServerError->value,
+            RequestStatus::FailedCallbackDelivery->value,
+        ], true);
+
+        if ($isFinalized) {
+            return;
+        }
+
+        $requests->markFinalStatus(
+            $this->requestId,
+            RequestStatus::FailedServerError->value,
+            'async_job_failed',
+            $exception->getMessage(),
+        );
     }
 
     private function hasPersistedSuccessResponse(): bool
@@ -163,116 +263,5 @@ class ProcessAsyncMessage implements ShouldQueue
             ->where('request_id', $this->requestId)
             ->whereNotNull('response_payload')
             ->exists();
-    }
-
-    public function failed(Throwable $exception, Logging $logging): void
-    {
-        Log::channel('llm')->error('ProcessAsyncMessage::failed', [
-            'request_id' => $this->requestId,
-            'exception' => $exception::class,
-            'message' => $exception->getMessage(),
-        ]);
-
-        if ($this->hasPersistedSuccessResponse()) {
-            $asyncStatus = DB::table('async_pending')->where('request_id', $this->requestId)->value('status');
-            if (in_array($asyncStatus, ['delivered', 'exhausted'], true)) {
-                return;
-            }
-
-            $logging->finalizeFromPersistedRaw($this->requestId);
-
-            DB::table('async_pending')->where('request_id', $this->requestId)->update([
-                'status' => 'processing',
-                'updated_at' => now(),
-            ]);
-            DeliverWebhook::dispatch($this->requestId)->onQueue('default');
-
-            return;
-        }
-
-        $currentStatus = DB::table('requests')->where('request_id', $this->requestId)->value('status');
-
-        $isFinalizedSuccess = in_array($currentStatus, [
-            RequestStatus::Completed->value,
-            RequestStatus::CompletedDisconnected->value,
-        ], true);
-
-        $isFinalizedFailure = in_array($currentStatus, [
-            RequestStatus::FailedClientError->value,
-            RequestStatus::FailedServerError->value,
-            RequestStatus::FailedCallbackDelivery->value,
-        ], true);
-
-        if (! $isFinalizedSuccess && ! $isFinalizedFailure) {
-            DB::table('requests')
-                ->where('request_id', $this->requestId)
-                ->update([
-                    'status' => RequestStatus::FailedServerError->value,
-                    'error_type' => 'async_job_failed',
-                    'error_message' => $exception->getMessage(),
-                    'completed_at' => now(),
-                ]);
-        }
-
-        DeliverWebhook::dispatch($this->requestId)->onQueue('default');
-    }
-
-    private function markInProgress(): void
-    {
-        DB::table('async_pending')->where('request_id', $this->requestId)->update([
-            'status' => 'processing',
-            'updated_at' => now(),
-        ]);
-        DB::table('requests')->where('request_id', $this->requestId)->update([
-            'status' => RequestStatus::InProgress->value,
-            'started_at' => now(),
-        ]);
-    }
-
-    /**
-     * @return string[]
-     */
-    private function extractFeatures(array $payload): array
-    {
-        $features = [];
-
-        if (isset($payload['thinking'])) {
-            $features[] = 'thinking';
-        }
-
-        if (isset($payload['tools'])) {
-            foreach ($payload['tools'] as $tool) {
-                $name = $tool['name'] ?? '';
-                if (str_starts_with($name, 'web_search')) {
-                    $features[] = 'web_search';
-                }
-                if ($name === 'code_execution') {
-                    $features[] = 'code_execution';
-                }
-                if (str_starts_with($name, 'computer_')) {
-                    $features[] = 'computer_use';
-                }
-                if ($name === 'bash') {
-                    $features[] = 'bash';
-                }
-                if ($name === 'text_editor') {
-                    $features[] = 'text_editor';
-                }
-            }
-        }
-
-        if (($payload['service_tier'] ?? null) === 'auto') {
-            $features[] = 'priority_tier';
-        }
-
-        if (! empty($payload['citations']['enabled'])) {
-            $features[] = 'citations';
-        }
-
-        if (isset($payload['output_config'])) {
-            $features[] = 'structured_outputs';
-        }
-
-        return array_unique($features);
     }
 }

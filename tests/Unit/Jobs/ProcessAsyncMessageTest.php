@@ -4,29 +4,31 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Jobs;
 
-use App\Components\Authorization\Authorization;
 use App\Components\Billing\Billing;
 use App\Components\Billing\CostEstimator;
 use App\Components\Caching\Caching;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageOutput;
+use App\Components\Claude\Payload\FeatureDetector;
 use App\Components\Claude\Payload\PayloadBuilder;
-use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
-use DateTimeImmutable;
-use Illuminate\Support\Facades\Bus;
-use Mockery;
 use App\Components\Delivery\Sync\DTO\AnthropicResponseEnvelope;
 use App\Components\Logging\Enums\RequestStatus;
 use App\Components\Logging\Logging;
+use App\Components\RateLimiting\Claude\Exceptions\RateLimitExceededException;
 use App\Jobs\DeliverWebhook;
 use App\Jobs\ProcessAsyncMessage;
 use App\Models\ClaudeWorkspace;
 use App\Models\Client;
+use App\Repositories\AsyncPendingRepository;
+use App\Repositories\RequestRepository;
+use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Mockery\MockInterface;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
@@ -59,11 +61,13 @@ final class ProcessAsyncMessageTest extends TestCase
         $job->handle(
             app(MessageSender::class),
             app(PayloadBuilder::class),
-            app(Authorization::class),
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
             app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
         );
 
         $this->assertSame(
@@ -96,11 +100,13 @@ final class ProcessAsyncMessageTest extends TestCase
         $job->handle(
             $claudeSpy,
             app(PayloadBuilder::class),
-            app(Authorization::class),
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
             app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
         );
 
         Queue::assertPushed(DeliverWebhook::class, 1);
@@ -125,11 +131,13 @@ final class ProcessAsyncMessageTest extends TestCase
         $job->handle(
             $claudeSpy,
             app(PayloadBuilder::class),
-            app(Authorization::class),
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
             app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
         );
 
         Queue::assertPushed(DeliverWebhook::class);
@@ -150,11 +158,13 @@ final class ProcessAsyncMessageTest extends TestCase
         $job->handle(
             app(MessageSender::class),
             app(PayloadBuilder::class),
-            app(Authorization::class),
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
             app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
         );
 
         $this->assertSame(
@@ -170,7 +180,7 @@ final class ProcessAsyncMessageTest extends TestCase
         Queue::fake([DeliverWebhook::class]);
 
         $job = new ProcessAsyncMessage($this->requestId);
-        $job->failed(new RuntimeException('simulated upstream crash'), app(Logging::class));
+        $job->failed(new RuntimeException('simulated upstream crash'));
 
         $row = DB::table('requests')->where('request_id', $this->requestId)->first();
         $this->assertSame(RequestStatus::FailedServerError->value, $row->status);
@@ -239,11 +249,13 @@ final class ProcessAsyncMessageTest extends TestCase
         $job->handle(
             $messageSender,
             app(PayloadBuilder::class),
-            app(Authorization::class),
             app(Billing::class),
             app(Logging::class),
             app(Caching::class),
             app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
         );
 
         Bus::assertNotDispatched(DeliverWebhook::class);
