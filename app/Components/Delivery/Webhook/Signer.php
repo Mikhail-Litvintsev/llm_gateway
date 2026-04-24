@@ -47,6 +47,35 @@ final class Signer
     }
 
     /**
+     * Verify signature AND require the timestamp to be recent.
+     *
+     * Signature is checked first (constant-time via {@see verify()}); only then the timestamp age is compared.
+     * The order is deliberate — reversing it would leak timestamp-age information through a timing side channel.
+     *
+     * A non-numeric timestamp is rejected explicitly: `(int) "abc"` silently coerces to `0`, which would
+     * otherwise be judged by age alone and is semantically meaningless.
+     */
+    public function verifyWithFreshness(
+        Client $client,
+        string $body,
+        string $timestamp,
+        string $signatureHeader,
+        ?int $maxAgeSeconds = null,
+    ): bool {
+        if (! $this->verify($client, $body, $timestamp, $signatureHeader)) {
+            return false;
+        }
+
+        if (! ctype_digit($timestamp)) {
+            return false;
+        }
+
+        $max = $maxAgeSeconds ?? (int) config('llm.webhook.timestamp_max_age_seconds', 300);
+
+        return abs(time() - (int) $timestamp) <= $max;
+    }
+
+    /**
      * @phpstan-assert non-empty-string $signatureHeader
      */
     public function verify(Client $client, string $body, string $timestamp, string $signatureHeader): bool

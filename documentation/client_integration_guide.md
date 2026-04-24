@@ -662,6 +662,64 @@ def verify_webhook(body: bytes, timestamp: str, signature_header: str, secret: s
     return hmac.compare_digest(expected, signature_header)
 ```
 
+### Webhook verification с freshness-check
+
+Подписанная валидная доставка, пойманная на линии, может быть переиграна атакующим. Чтобы отсечь replay-атаки — проверяй возраст `X-Webhook-Timestamp`: если подпись валидна, но timestamp старше 300 секунд (default), доставку стоит отбросить.
+
+**Gateway-side reference implementation:** [`app/Components/Delivery/Webhook/Signer.php::verifyWithFreshness`](../app/Components/Delivery/Webhook/Signer.php).
+
+**Reference на PHP (standalone):**
+
+```php
+function verifyWebhook(
+    string $body,
+    string $timestampHeader,
+    string $signatureHeader,
+    string $secret,
+    int $maxAgeSeconds = 300,
+): bool {
+    if (! str_starts_with($signatureHeader, 'sha256=')) {
+        return false;
+    }
+    $provided = substr($signatureHeader, 7);
+    $computed = hash_hmac('sha256', $timestampHeader.'.'.$body, $secret);
+    if (! hash_equals($computed, $provided)) {
+        return false;
+    }
+    if (! ctype_digit($timestampHeader)) {
+        return false;
+    }
+    return abs(time() - (int) $timestampHeader) <= $maxAgeSeconds;
+}
+```
+
+**Reference на TypeScript (Node):**
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verifyWebhook(
+  body: string,
+  timestampHeader: string,
+  signatureHeader: string,
+  secret: string,
+  maxAgeSeconds = 300,
+): boolean {
+  if (!signatureHeader.startsWith("sha256=")) return false;
+  const provided = Buffer.from(signatureHeader.slice(7), "hex");
+  const computed = createHmac("sha256", secret)
+    .update(`${timestampHeader}.${body}`)
+    .digest();
+  if (provided.length !== computed.length) return false;
+  if (!timingSafeEqual(provided, computed)) return false;
+  if (!/^\d+$/.test(timestampHeader)) return false;
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestampHeader));
+  return age <= maxAgeSeconds;
+}
+```
+
+Порядок проверок — signature first, then timestamp — важен: reversing даёт timing-оракул на возраст timestamp'а.
+
 ### Политика повторных попыток
 
 | Параметр | Значение |

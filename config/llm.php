@@ -208,6 +208,7 @@ return [
         'request_timeout_seconds' => 30,
         'connect_timeout_seconds' => max(1, (int) env('WEBHOOK_CONNECT_TIMEOUT_SECONDS', 5)),
         'scheduler_batch_size' => max(1, (int) env('WEBHOOK_SCHEDULER_BATCH_SIZE', 500)),
+        'timestamp_max_age_seconds' => max(1, (int) env('WEBHOOK_TIMESTAMP_MAX_AGE_SECONDS', 300)),
         'signing_algorithm' => 'sha256',
     ],
 
