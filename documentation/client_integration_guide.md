@@ -3,7 +3,125 @@
 - **Версия протокола:** 4.0
 - **Формат:** JSON (Anthropic Messages API)
 - **Провайдер:** Claude (Anthropic)
-- **Дата актуализации:** 2026-04-21
+- **Дата актуализации:** 2026-04-25
+
+---
+
+## Deviations from Anthropic Messages API
+
+LLM Gateway is a pass-through on top of the Anthropic Messages API. Most of the schema and semantics come directly from Anthropic — consult their [official docs](https://docs.claude.com/en/api/messages) for request/response shape. This section lists only the places where the gateway **differs** from a raw Anthropic call. Everything else is identical.
+
+### 1. Authentication
+
+- Anthropic: `x-api-key: sk-ant-*` header.
+- Gateway: `Authorization: Bearer gw_live_*` header. The gateway maps each `gw_live_*` key to a workspace-scoped Anthropic key internally; clients never see or send the `sk-ant-*` key.
+- Sending `x-api-key` directly (or using a raw `sk-ant-*` with the gateway) returns:
+  ```json
+  {"type":"error","error":{"type":"authentication_error","message":"Missing or invalid bearer token"}}
+  ```
+
+### 2. Model identifiers
+
+- Anthropic: accepts model snapshots (e.g. `claude-sonnet-4-6-20260101`) and short aliases.
+- Gateway: accepts **only** aliases: `claude-opus`, `claude-sonnet`, `claude-haiku`. Snapshot strings are rejected with `invalid_request_error`. The gateway chooses the snapshot from `config/llm.php` → `claude.model_aliases`.
+
+### 3. Gateway response headers
+
+The gateway emits these metadata headers on responses. They are **not** injected into the response body. The canonical list lives in code — grep `app/Components/Delivery/{Sync,Stream}/*Responder.php` + `app/Http/Controllers/Api/V1/*.php` for `X-Gateway-` to verify:
+
+| Header | Present on | Meaning |
+|---|---|---|
+| `X-Gateway-Request-Id` | All | UUID of the gateway request (distinct from Anthropic's `anthropic-request-id`). |
+| `X-Gateway-Anthropic-Request-Id` | Sync, stream | Upstream request-id from Anthropic, if returned. |
+| `X-Gateway-Model-Alias` | All | Alias the client sent. |
+| `X-Gateway-Model-Snapshot` | All | Snapshot the gateway resolved and sent to Anthropic. |
+| `X-Gateway-Cost-USD` | Sync, stream | Final cost in USD, 6 decimal places. |
+| `X-Gateway-Cost-Breakdown` | Sync, stream | Base64-encoded JSON: cost split across input/output/cache/server-tools. |
+| `X-Gateway-Spend-Remaining-USD` | Sync, stream | Remaining monthly spend cap after this call. |
+| `X-Gateway-Estimated-Cost-USD` | Async accept, show | Pre-flight cost estimate (async has no final cost at accept time). |
+| `X-Gateway-Service-Tier-Used` | Sync, stream | Service tier returned by Anthropic. |
+| `X-Gateway-Cache-Hit-Tokens` | Sync, stream | Prompt-cache hit tokens, if any. |
+| `X-Gateway-Warning` | As applicable | Non-fatal anomaly (e.g. `auto_resume_limit_reached` in sessions). |
+| `Retry-After` | 429 | Seconds until retry is allowed. |
+
+### 4. Gateway-specific endpoints
+
+These endpoints do not exist in Anthropic's API. Snapshot as of 2026-04-25; verify against `routes/api.php` before integration.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/v1/messages/async` | POST | Returns 202 + `request_id`; the result is delivered later as a signed webhook. |
+| `/v1/messages/{request_id}` | GET | Retrieve a stored async request's metadata and state. |
+| `/v1/messages/batch` | POST | Accumulator-mode single-item submission; the gateway accumulates and flushes to Anthropic's Batch API on size/time triggers. |
+| `/v1/batches/{id}/results` | GET | NDJSON-streaming results of a completed batch. |
+| `/v1/sessions` | POST | Create a multi-turn session with auto-compaction. |
+| `/v1/sessions/{id}` | GET / DELETE | Session metadata / deletion. |
+| `/v1/sessions/{id}/messages` | GET / POST | List / append session messages. |
+| `/v1/skills/*` | * | Skill manifest lifecycle. |
+| `/v1/files/*` | * | File upload, list, fetch, delete (proxy + local metadata). |
+| `/v1/clients/me/usage` | GET | Current client's monthly spend and request stats. |
+
+Endpoints that mirror Anthropic 1-for-1 (only auth / headers differ — see §1 and §3): `/v1/messages`, `/v1/messages/count_tokens`, `/v1/batches` (POST/GET), `/v1/batches/{id}` (GET/DELETE), `/v1/batches/{id}/cancel`, `/v1/models`, `/v1/models/{alias}`.
+
+### 5. Batch endpoint — poll vs accumulator
+
+Anthropic's Batch API expects a full batch submitted in one POST. The gateway keeps that contract (`/v1/batches`) and adds **accumulator mode** (`/v1/messages/batch`): clients POST items one at a time, the gateway accumulates them and flushes to Anthropic when size or time triggers fire. See section `7. Batch API` for the full accumulator payload shape.
+
+### 6. Error format extensions
+
+- Anthropic error body:
+  ```json
+  {"type":"error","error":{"type":"<category>","message":"..."}}
+  ```
+- Gateway adds `gateway_request_id` for correlation:
+  ```json
+  {"type":"error","error":{"type":"billing_error","message":"Monthly spend cap exceeded"},"gateway_request_id":"req_..."}
+  ```
+- Extra categories that Anthropic does not define: `billing_error` (spend cap), `gateway_internal_error` (unexpected server-side failure). Preventive 429 (triggered before the upstream call by the Redis rate-limit snapshot) reuses the standard `rate_limit_error`; there is no dedicated `preventive_rate_limit` type today.
+
+### 7. Webhook envelope (async mode)
+
+Async results are delivered as a signed webhook. The body is **not** the raw Anthropic response — it is a gateway envelope:
+
+```json
+{
+  "request_id": "req_...",
+  "event": "message.completed",
+  "anthropic_request_id": "...",
+  "model_alias": "claude-sonnet",
+  "model_snapshot": "claude-sonnet-4-6",
+  "anthropic_response": { "...": "full Anthropic body, 1-for-1" },
+  "error": null,
+  "billing": {
+    "cost_usd": 0.0045,
+    "cost_breakdown": { "...": "..." },
+    "monthly_spend_after_usd": 125.50,
+    "monthly_spend_remaining_usd": 874.50
+  }
+}
+```
+
+On failure, `event` is `message.failed`, `anthropic_response` is absent (or `null`), and `error` is populated. Delivery headers: `X-Webhook-Signature: sha256=<hex>`, `X-Webhook-Timestamp` (unix seconds), `X-Webhook-Request-Id`, `X-Webhook-Event`. Verification: see the "Webhook verification" section below, which includes a reference freshness check.
+
+### 8. SSE streaming
+
+- Pass-through of Anthropic SSE events: `message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`.
+- The gateway **does not** add its own sentinel events (no `gateway_done`, no `gateway_error`). Gateway metadata (`X-Gateway-Request-Id`, `X-Gateway-Cost-USD` and the rest of §3) is emitted in HTTP response headers before the SSE stream begins.
+- The last event in the stream is Anthropic's `message_stop`. The gateway closes the connection after it.
+
+### 9. Rate-limit signalling
+
+- Anthropic: per-response `anthropic-ratelimit-*` headers.
+- Gateway: **preventive** 429 is returned *before* calling upstream when the Redis snapshot of Anthropic's rate-limit counters predicts the request would exceed limits. The error body uses the standard type:
+  ```json
+  {"type":"error","error":{"type":"rate_limit_error","message":"Upstream rate limit would be exceeded; retry later"}}
+  ```
+  with `Retry-After: <seconds>` in headers. Gateway-originated 429 and Anthropic-originated 429 share the same `rate_limit_error` type; distinguish by the absence of `anthropic-ratelimit-*` headers and the presence of a gateway-set `Retry-After` on the preventive path.
+
+### 10. Beta headers and feature auto-wiring
+
+- Anthropic: the client sets `anthropic-beta: ...` manually and opts each call in to beta features.
+- Gateway: `FeatureDetector` inspects the payload and sets the right `anthropic-beta` combination automatically (prompt caching, extended thinking, skills, MCP, server tools, files). Clients pass a plain Anthropic payload — the gateway attaches the beta headers.
 
 ---
 

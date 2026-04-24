@@ -185,6 +185,77 @@ BatchWebhookFanout
   - >  100 items: aggregated webhook
 ```
 
+### 1.5 C4 component graph
+
+Диаграмма отражает зависимости первого уровня между `app/Components/*`. Edge-слой принимает запрос (auth/validation/routing), Domain-слой применяет бизнес-правила (billing, rate-limit, caching), Integration-слой взаимодействует с внешними сервисами. Observability (Logging/Healthcheck) — поперечный слой.
+
+```mermaid
+graph LR
+    subgraph Edge
+        Auth
+        Authorization
+        Validation
+        Routing
+    end
+    subgraph Domain
+        Messaging
+        Sessions
+        Skills
+        Caching
+        Billing
+        RateLimiting
+        Pricing
+        Usage
+    end
+    subgraph Integration
+        Claude
+        Delivery
+        DevMode
+    end
+    subgraph Observability
+        Logging
+        Healthcheck
+    end
+    subgraph External
+        MySQL[(MySQL)]
+        Redis[(Redis)]
+        Anthropic([Anthropic API])
+        Webhook([Client Webhook])
+    end
+
+    Messaging --> Auth
+    Messaging --> Authorization
+    Messaging --> Validation
+    Messaging --> Routing
+    Messaging --> Claude
+    Messaging --> Logging
+    Messaging --> Billing
+    Messaging --> Caching
+    Messaging --> RateLimiting
+    Messaging --> DevMode
+    Sessions --> Claude
+    Sessions --> Logging
+    Sessions --> MySQL
+    Claude --> RateLimiting
+    Claude --> Pricing
+    Claude --> Anthropic
+    Delivery --> Webhook
+    Delivery --> MySQL
+    Billing --> Pricing
+    Billing --> Usage
+    Auth --> MySQL
+    Authorization --> MySQL
+    Logging --> MySQL
+    RateLimiting --> Redis
+    Caching --> Redis
+    Usage --> MySQL
+    Skills --> MySQL
+    Healthcheck --> MySQL
+    Healthcheck --> Redis
+```
+
+Стрелка `A → B` = «A вызывает/читает B». Cluster-рамки группируют компоненты по слоям, но не накладывают ограничение «нельзя звать через слой» — пример: `Messaging` → `Claude` напрямую, как и ожидается. Snapshot: 2026-04-25. Последние изменения: Phase 05 (извлечение компонента `Messaging`).
+
 ---
 
 ## 2. Components

@@ -104,6 +104,8 @@ sequenceDiagram
 
 Full specification: [documentation/client_integration_guide.md](documentation/client_integration_guide.md).
 
+Protocol compatibility: pass-through of the Anthropic Messages API. See [Deviations](documentation/client_integration_guide.md#deviations-from-anthropic-messages-api) for gateway-specific differences (auth, headers, additional endpoints, webhook envelope, error extensions). Architectural rationale: [documentation/decisions.md](documentation/decisions.md) ([ADR-001](documentation/decisions.md#adr-001-claude-only-gateway), [ADR-007](documentation/decisions.md#adr-007-no-openapi)).
+
 ## Testing
 
 ```bash
