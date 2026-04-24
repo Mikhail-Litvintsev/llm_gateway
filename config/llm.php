@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+$claudeApiBase = rtrim((string) env('CLAUDE_API_BASE_URL', 'https://api.anthropic.com'), '/');
+
 return [
     'version' => '4.0',
 
@@ -17,13 +19,15 @@ return [
         'admin_api_key' => env('CLAUDE_ADMIN_API_KEY'),
         'anthropic_version' => '2023-06-01',
 
+        'base_url' => $claudeApiBase,
+
         'endpoints' => [
-            'messages' => 'https://api.anthropic.com/v1/messages',
-            'count_tokens' => 'https://api.anthropic.com/v1/messages/count_tokens',
-            'batches' => 'https://api.anthropic.com/v1/messages/batches',
-            'files' => 'https://api.anthropic.com/v1/files',
-            'models' => 'https://api.anthropic.com/v1/models',
-            'usage_report' => 'https://api.anthropic.com/v1/organizations/usage_report/messages',
+            'messages' => $claudeApiBase.'/v1/messages',
+            'count_tokens' => $claudeApiBase.'/v1/messages/count_tokens',
+            'batches' => $claudeApiBase.'/v1/messages/batches',
+            'files' => $claudeApiBase.'/v1/files',
+            'models' => $claudeApiBase.'/v1/models',
+            'usage_report' => $claudeApiBase.'/v1/organizations/usage_report/messages',
         ],
 
         'default_model_alias' => 'claude-sonnet',

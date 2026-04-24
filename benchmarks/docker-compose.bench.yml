@@ -1,0 +1,29 @@
+services:
+  mock_upstream:
+    build:
+      context: ./mock-upstream
+    container_name: llm_mock_upstream
+    environment:
+      UPSTREAM_DELAY_MS: "0"
+    networks:
+      - llm_internal
+    ports:
+      - "8090:8090"
+    restart: "no"
+
+  k6:
+    image: grafana/k6:0.50.0
+    container_name: llm_k6
+    volumes:
+      - ./:/bench
+    working_dir: /bench
+    networks:
+      - llm_internal
+    environment:
+      GATEWAY_URL: http://llm_nginx:80
+      GATEWAY_API_KEY: "${GATEWAY_API_KEY}"
+    entrypoint: ["k6", "run", "gateway-overhead.js"]
+
+networks:
+  llm_internal:
+    external: true
