@@ -17,7 +17,7 @@ The Claude-only choice is deliberate. One provider, passed through byte-for-byte
 
 When a second provider becomes necessary, the plan is an additional gateway, not an abstraction layer. That keeps boundaries explicit and prevents the Claude-specific feature set from rotting into a subset of shared behaviour.
 
-Reference: [Anthropic Messages API](https://docs.claude.com/en/api/messages). A full rationale and trade-off discussion is planned in `documentation/decisions.md` (coming in Phase 7).
+Reference: [Anthropic Messages API](https://docs.claude.com/en/api/messages). Full architectural rationale and trade-offs live in [documentation/decisions.md](documentation/decisions.md) ([ADR-001](documentation/decisions.md#adr-001-claude-only-gateway)).
 
 ## Quickstart
 
