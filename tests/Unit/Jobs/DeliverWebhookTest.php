@@ -14,6 +14,7 @@ use App\Repositories\RequestRepository;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -160,6 +161,81 @@ final class DeliverWebhookTest extends TestCase
         $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
         $this->assertSame('delivered', $row->status);
         $this->assertSame(1, (int) $row->callback_attempts);
+    }
+
+    #[Test]
+    public function backoff_formula_is_exponential_and_capped(): void
+    {
+        $scenarios = [
+            [1, 10],
+            [2, 20],
+            [5, 160],
+            [9, 2560],
+            [10, 3600],
+        ];
+
+        foreach ($scenarios as [$newAttempts, $expectedDelay]) {
+            DB::table('async_pending')
+                ->where('request_id', $this->requestId)
+                ->update([
+                    'callback_attempts' => $newAttempts - 1,
+                    'status' => 'processing',
+                    'next_attempt_at' => null,
+                ]);
+
+            Http::fake([
+                $this->callbackUrl => Http::response('fail', 500),
+            ]);
+
+            Carbon::setTestNow(Carbon::parse('2026-04-24 12:00:00'));
+
+            $job = new DeliverWebhook($this->requestId);
+            $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+            $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
+
+            if ($newAttempts >= 10) {
+                $this->assertSame('exhausted', $row->status, "attempts=$newAttempts should exhaust");
+                $this->assertNull($row->next_attempt_at);
+            } else {
+                $this->assertSame('processing', $row->status, "attempts=$newAttempts stays processing");
+                $expected = Carbon::parse('2026-04-24 12:00:00')->addSeconds($expectedDelay);
+                $actual = Carbon::parse($row->next_attempt_at);
+                $this->assertLessThanOrEqual(
+                    3,
+                    abs($expected->diffInSeconds($actual)),
+                    "attempts=$newAttempts expected delay $expectedDelay s",
+                );
+            }
+
+            Carbon::setTestNow();
+        }
+    }
+
+    #[Test]
+    public function signature_header_is_signed_with_current_secret(): void
+    {
+        Http::fake([
+            $this->callbackUrl => Http::response('', 200),
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $secret = Crypt::decryptString($this->client->signing_secret_current_encrypted);
+
+        Http::assertSent(function (Request $request) use ($secret): bool {
+            $sig = $request->header('X-Webhook-Signature');
+            $ts = $request->header('X-Webhook-Timestamp');
+            $body = $request->body();
+
+            $sigValue = is_array($sig) ? ($sig[0] ?? '') : $sig;
+            $tsValue = is_array($ts) ? ($ts[0] ?? '') : $ts;
+
+            $expected = 'sha256='.hash_hmac('sha256', $tsValue.'.'.$body, $secret);
+
+            return $sigValue === $expected;
+        });
     }
 
     #[Test]

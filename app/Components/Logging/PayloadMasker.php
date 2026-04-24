@@ -8,7 +8,7 @@ final class PayloadMasker
 {
     private const string REDACTED = '[REDACTED]';
 
-    private const string SENSITIVE_PATTERN = '/oauth|token|secret|api_key|authorization/i';
+    private const string SENSITIVE_PATTERN = '/oauth|token(?!s)|secret|api[-_]?key|authorization/i';
 
     public static function mask(string $payload): string
     {

@@ -106,4 +106,23 @@ final class AnthropicSmokeTest extends TestCase
         $this->assertSame('message', $body['type']);
         $this->assertNotEmpty($body['content']);
     }
+
+    public function test_real_streaming_messages(): void
+    {
+        $response = $this->postJson('/api/v1/messages', [
+            'model' => 'claude-haiku',
+            'messages' => [['role' => 'user', 'content' => [['type' => 'text', 'text' => 'Reply with exactly the word "hello".']]]],
+            'max_tokens' => 32,
+            'stream' => true,
+        ], ['Authorization' => 'Bearer '.$this->plainKey]);
+
+        $response->assertStatus(200);
+        $this->assertStringStartsWith('text/event-stream', $response->headers->get('Content-Type'));
+        $this->assertNotNull($response->headers->get('X-Gateway-Request-Id'));
+
+        $body = $response->streamedContent();
+        $this->assertStringContainsString('event: message_start', $body);
+        $this->assertStringContainsString('event: content_block_delta', $body);
+        $this->assertStringContainsString('event: message_stop', $body);
+    }
 }

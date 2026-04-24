@@ -113,11 +113,32 @@ docker compose exec -T llm_gateway php artisan test
 
 # Unit suite only
 docker compose exec -T llm_gateway php artisan test --testsuite=Unit
+```
 
-# Integration smoke (real Anthropic key required)
+## Running integration tests
+
+Integration tests hit the real Anthropic API and are opt-in. They are skipped by default.
+
+### Prerequisites
+- Set `ANTHROPIC_API_KEY_TEST` to a valid Anthropic API key with quota for `claude-haiku`.
+- Set `INTEGRATION_ANTHROPIC=1`.
+- Use a separate key from production — integration tests consume real tokens.
+
+### Run
+
+```bash
 INTEGRATION_ANTHROPIC=1 ANTHROPIC_API_KEY_TEST=sk-ant-... \
     docker compose exec -T llm_gateway php artisan test --testsuite=Integration
 ```
+
+### Scenarios covered
+- `test_claude_status_command_reports_connected` — healthcheck ping.
+- `test_count_tokens_live_returns_positive_integer` — `/count_tokens` on Haiku.
+- `test_messages_live_haiku_minimal_roundtrip` — `/messages` sync on Haiku.
+- `test_real_streaming_messages` — `/messages` with `stream: true` on Haiku.
+
+### Cost
+Each full run costs roughly $0.001 (Haiku, single-digit tokens per test). Safe to run in CI daily.
 
 ## Known limitations
 

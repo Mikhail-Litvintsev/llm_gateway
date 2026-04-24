@@ -31,7 +31,7 @@ final class ClaudePreventiveRateLimitTest extends TestCase
     }
 
     #[Test]
-    public function send_message_throws_before_http_call_when_canProceed_throws(): void
+    public function send_message_throws_before_http_call_when_can_proceed_throws(): void
     {
         $this->mock(ClaudeRateLimitTracker::class, function ($mock) {
             $mock->shouldReceive('canProceed')
@@ -72,7 +72,7 @@ final class ClaudePreventiveRateLimitTest extends TestCase
     }
 
     #[Test]
-    public function canProceed_called_with_correct_namespace_and_token_estimates(): void
+    public function can_proceed_called_with_correct_namespace_and_token_estimates(): void
     {
         $this->mock(ClaudeRateLimitTracker::class, function ($mock) {
             $mock->shouldReceive('canProceed')

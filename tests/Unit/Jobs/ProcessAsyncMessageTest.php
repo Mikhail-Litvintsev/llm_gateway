@@ -6,6 +6,7 @@ namespace Tests\Unit\Jobs;
 
 use App\Components\Billing\Billing;
 use App\Components\Billing\CostEstimator;
+use App\Components\Billing\UsageTracker;
 use App\Components\Caching\Caching;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\DTO\SendMessageOutput;
@@ -261,6 +262,93 @@ final class ProcessAsyncMessageTest extends TestCase
         Bus::assertNotDispatched(DeliverWebhook::class);
         $this->assertDatabaseMissing('request_raw', ['request_id' => $this->requestId]);
         $this->assertDatabaseMissing('request_usage', ['request_id' => $this->requestId]);
+    }
+
+    #[Test]
+    public function retry_after_billing_failure_does_not_call_claude_twice(): void
+    {
+        Queue::fake([DeliverWebhook::class]);
+
+        $this->client->update([
+            'allowed_features' => ['hard_cap_enforcement' => true],
+        ]);
+
+        $claudeSpy = $this->mock(MessageSender::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('sendMessage')
+                ->once()
+                ->andReturn($this->makeSuccessOutput());
+        });
+
+        $this->mock(UsageTracker::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('commit')
+                ->once()
+                ->andThrow(new RuntimeException('Redis outage on billing commit'));
+        });
+
+        $job = new ProcessAsyncMessage($this->requestId);
+
+        try {
+            $job->handle(
+                $claudeSpy,
+                app(PayloadBuilder::class),
+                app(Billing::class),
+                app(Logging::class),
+                app(Caching::class),
+                app(CostEstimator::class),
+                app(FeatureDetector::class),
+                app(RequestRepository::class),
+                app(AsyncPendingRepository::class),
+            );
+            $this->fail('Billing failure should propagate on first attempt');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Redis outage on billing commit', $e->getMessage());
+        }
+
+        $this->assertNotNull(
+            DB::table('request_raw')->where('request_id', $this->requestId)->value('response_payload'),
+        );
+
+        $job2 = new ProcessAsyncMessage($this->requestId);
+        $job2->handle(
+            $claudeSpy,
+            app(PayloadBuilder::class),
+            app(Billing::class),
+            app(Logging::class),
+            app(Caching::class),
+            app(CostEstimator::class),
+            app(FeatureDetector::class),
+            app(RequestRepository::class),
+            app(AsyncPendingRepository::class),
+        );
+
+        Queue::assertPushed(
+            DeliverWebhook::class,
+            fn (DeliverWebhook $d) => $d->requestId === $this->requestId,
+        );
+        $this->assertSame(
+            RequestStatus::Completed->value,
+            DB::table('requests')->where('request_id', $this->requestId)->value('status'),
+        );
+    }
+
+    #[Test]
+    public function failed_hook_with_persisted_response_triggers_idempotent_finalize(): void
+    {
+        Queue::fake([DeliverWebhook::class]);
+
+        $this->persistPriorSuccessResponse($this->requestId);
+
+        $job = new ProcessAsyncMessage($this->requestId);
+        $job->failed(new RuntimeException('post-claude billing crash'));
+
+        $row = DB::table('requests')->where('request_id', $this->requestId)->first();
+        $this->assertSame(RequestStatus::Completed->value, $row->status);
+        $this->assertNull($row->error_type);
+
+        Queue::assertPushed(
+            DeliverWebhook::class,
+            fn (DeliverWebhook $d) => $d->requestId === $this->requestId,
+        );
     }
 
     private function seedClient(): Client

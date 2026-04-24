@@ -266,7 +266,7 @@ final readonly class Claude implements MessageSender
     }
 
     /**
-     * @throws \Throwable
+     * @throws Throwable
      */
     public function createBatch(BatchCreateRequest $request, int $clientId): Batch
     {

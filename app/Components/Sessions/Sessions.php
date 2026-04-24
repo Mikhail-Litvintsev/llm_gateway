@@ -266,6 +266,10 @@ final readonly class Sessions implements SessionsContract
             $payload['mcp_servers'] = $decryptedMcpServers;
         }
 
+        if (! empty($session->context_management)) {
+            $payload['context_management'] = $session->context_management;
+        }
+
         if ($input->maxTokens !== null) {
             $payload['max_tokens'] = $input->maxTokens;
         }
