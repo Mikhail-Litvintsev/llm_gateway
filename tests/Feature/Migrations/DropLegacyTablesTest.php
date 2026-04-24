@@ -29,8 +29,10 @@ final class DropLegacyTablesTest extends TestCase
             $table->id();
         });
 
-        $original = $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] ?? null;
+        $originalEnv = $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] ?? null;
+        $originalServer = $_SERVER['CLAUDE_ALLOW_LEGACY_DROP'] ?? null;
         $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] = 'wrong-value';
+        $_SERVER['CLAUDE_ALLOW_LEGACY_DROP'] = 'wrong-value';
         putenv('CLAUDE_ALLOW_LEGACY_DROP=wrong-value');
 
         $migration = require database_path('migrations/2026_05_01_000001_drop_legacy_tables.php');
@@ -42,13 +44,24 @@ final class DropLegacyTablesTest extends TestCase
             $this->assertStringContainsString('CLAUDE_ALLOW_LEGACY_DROP', $e->getMessage());
         } finally {
             Schema::dropIfExists('api_clients');
-            if ($original !== null) {
-                $_ENV['CLAUDE_ALLOW_LEGACY_DROP'] = $original;
-                putenv("CLAUDE_ALLOW_LEGACY_DROP=$original");
-            } else {
-                unset($_ENV['CLAUDE_ALLOW_LEGACY_DROP']);
-                putenv('CLAUDE_ALLOW_LEGACY_DROP');
-            }
+            $this->restoreEnv('CLAUDE_ALLOW_LEGACY_DROP', $originalEnv, $originalServer);
+        }
+    }
+
+    private function restoreEnv(string $key, ?string $originalEnv, ?string $originalServer): void
+    {
+        if ($originalEnv !== null) {
+            $_ENV[$key] = $originalEnv;
+            putenv("$key=$originalEnv");
+        } else {
+            unset($_ENV[$key]);
+            putenv($key);
+        }
+
+        if ($originalServer !== null) {
+            $_SERVER[$key] = $originalServer;
+        } else {
+            unset($_SERVER[$key]);
         }
     }
 
