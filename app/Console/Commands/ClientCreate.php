@@ -53,7 +53,7 @@ final class ClientCreate extends Command
             'default_model_alias' => $this->option('model-alias'),
             'monthly_spend_cap_usd' => $this->option('monthly-cap'),
             'rate_limit_rpm' => $this->option('rate-limit') ?? 60,
-            'allowed_features' => $features ?: null,
+            'allowed_features' => $features,
         ]);
 
         $this->info("Client created: id={$client->id} name=\"{$name}\"");

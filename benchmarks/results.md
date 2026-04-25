@@ -73,3 +73,32 @@ docker compose -f benchmarks/docker-compose.bench.yml down
 sed -i '/^CLAUDE_API_BASE_URL=/d' .env
 docker compose up -d --force-recreate llm_gateway
 ```
+## Run 2 — 2026-04-25 (Phase 8 verification re-run)
+
+Same machine, same load profile as Run 1. Two consecutive k6 runs against the post-Phase-7 build.
+
+### Metrics — `gateway_overhead_ms` (steady phase)
+
+| Metric | Run 2a | Run 2b |
+|---|---|---|
+| p50 | 47.3 ms | 43.0 ms |
+| p95 | 91.1 ms | 81.8 ms |
+| p99 | 111.0 ms | 99.4 ms |
+| max | 168.3 ms | 192.3 ms |
+| avg | 51.1 ms | 46.2 ms |
+| requests | 49 671 | 54 919 |
+| effective RPS | 331 | 366 |
+| error rate | 48.9 % | 53.4 % |
+
+### Successful-only slice (`expected_response:true`)
+
+| Metric | Run 2a | Run 2b |
+|---|---|---|
+| p95 | 99.4 ms | 90.4 ms |
+| p99 | 118.8 ms | 106.6 ms |
+
+### Comparison vs Run 1
+
+- Latency improved ~20–30 % across p50/p95/p99 — within run-to-run variance for a single-host bench, no code-level cause attributable. Phase 5 (`async_pending` index reorder) and Phase 6 (PayloadBuilder decomposition) touch hot paths in unrelated workloads (scheduler, validation), so the published Run 1 numbers remain the conservative claim and were **not** revised in `README.md` / ADR-008.
+- Effective RPS rose from ~228 to ~330–370. With per-client `rate_limit_rpm = 10000` (≈ 167 RPS), the limiter starts denying at higher saturation, hence the higher error rate. Successful requests still hit the same upstream + middleware path.
+- `gateway_overhead_ms p(95) < 100 ms` threshold passes on this run; `http_req_failed < 0.1 %` continues to fail because of the per-client rate-limit denials at sustained 330+ RPS.

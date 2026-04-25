@@ -7,6 +7,7 @@ namespace App\Jobs\Scheduled;
 use App\Components\Healthcheck\Enums\HealthStatus;
 use App\Components\Routing\WorkspaceResolver;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -25,14 +26,16 @@ final class ClaudeApiPingScheduled implements ShouldQueue
 
     public function handle(WorkspaceResolver $workspaces): void
     {
-        $workspace = $workspaces->resolveDefault();
+        try {
+            $workspace = $workspaces->resolveDefault();
+        } catch (DecryptException) {
+            $this->cacheStatus(HealthStatus::Down, null, 'default workspace api_key cannot be decrypted (likely APP_KEY rotated without re-encryption; see runbook)');
+
+            return;
+        }
 
         if (! $workspace) {
-            Redis::connection('cache')->setex('claude:healthcheck:anthropic', 90, json_encode([
-                'status' => HealthStatus::Down->value,
-                'error' => 'no default workspace configured',
-                'checked_at' => now()->toIso8601String(),
-            ]));
+            $this->cacheStatus(HealthStatus::Down, null, 'no default workspace configured');
 
             return;
         }
@@ -56,6 +59,11 @@ final class ClaudeApiPingScheduled implements ShouldQueue
             $error = $e->getMessage();
         }
 
+        $this->cacheStatus($status, $latencyMs, $error);
+    }
+
+    private function cacheStatus(HealthStatus $status, ?int $latencyMs, ?string $error): void
+    {
         Redis::connection('cache')->setex('claude:healthcheck:anthropic', 90, json_encode([
             'status' => $status->value,
             'latency_ms' => $latencyMs,

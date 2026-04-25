@@ -874,3 +874,53 @@ Drops the previous composite index `[status, next_attempt_at]` and creates `asyn
 `ALGORITHM=INPLACE, LOCK=NONE` avoids downtime on large tables. Laravel's migration wrapper does not emit these clauses -- for a production DB with >10M rows, run the raw SQL manually before invoking `php artisan migrate` (then mark the migration as run via `INSERT INTO migrations`).
 
 For dev, test or small prod (<1M rows), `php artisan migrate` is sufficient.
+
+## Rotating APP_KEY
+
+`APP_KEY` is the Laravel encryption key that protects every `*_encrypted` column in the database:
+
+- `claude_workspaces.api_key_encrypted` — Anthropic API keys
+- `clients.signing_secret_current_encrypted` and `clients.signing_secret_previous_encrypted` — webhook HMAC secrets
+- `sessions.mcp_servers[*].authorization_token` — per-session MCP server tokens
+
+Rotating `APP_KEY` without re-encrypting these columns leaves the gateway unable to decrypt them. Symptom: every request that needs an upstream call returns 500 with `DecryptException: The MAC is invalid.` in `storage/logs/laravel.log`. The healthcheck reports the Anthropic component as `down` with the error `default workspace api_key cannot be decrypted (likely APP_KEY rotated without re-encryption)`.
+
+### Procedure
+
+1. **Generate the new key** *without* writing it to `.env` yet:
+
+        php artisan key:generate --show
+
+2. **Save the previous key** to `APP_OLD_KEY` and the new one to `APP_KEY` in your `.env` (or secret manager). Both keys must coexist for the duration of the migration.
+
+3. **Recreate the application containers** so they pick up the new env. Long-running workers (`llm_queue_worker`, `llm_scheduler`) cache `APP_KEY` from `docker-compose env_file` at container creation; a hot `.env` edit is *not* enough:
+
+        docker compose up -d --force-recreate llm_gateway llm_queue_worker llm_scheduler
+
+4. **Dry-run the re-encryption** to see how many rows will be touched:
+
+        APP_OLD_KEY="$(grep ^APP_OLD_KEY .env | cut -d= -f2-)" \
+          docker compose exec -T -e APP_OLD_KEY llm_gateway \
+          php artisan keys:reencrypt --dry-run
+
+5. **Apply the re-encryption.** The command is idempotent: rows already encrypted with the new key are skipped.
+
+        APP_OLD_KEY="$(grep ^APP_OLD_KEY .env | cut -d= -f2-)" \
+          docker compose exec -T -e APP_OLD_KEY llm_gateway \
+          php artisan keys:reencrypt
+
+   Output reports per-row outcomes (`ok` / `reencrypted` / `failed`) and a final summary. Exit code is non-zero only if at least one row failed.
+
+6. **Verify** that healthcheck recovers within ~60 s (the scheduler ping caches its result for 90 s):
+
+        curl -sf http://localhost:8080/internal/health | jq '.components.anthropic.status'
+
+   Expected: `"ok"`.
+
+7. **Remove `APP_OLD_KEY` from `.env`** and recreate the gateway so the previous key is no longer reachable.
+
+### Notes
+
+- `keys:reencrypt` reads `APP_OLD_KEY` from the process environment only — it never writes the key to logs, never accepts it as a CLI argument, and never echoes it. Pass it via env-only invocation as shown above.
+- Failed rows (e.g. data encrypted with a key that is neither `APP_KEY` nor `APP_OLD_KEY`) are reported per row but do not abort the run; review the failures and re-run with the appropriate `APP_OLD_KEY` if needed.
+- Soft-deleted clients are included so their secrets remain decryptable for audit.

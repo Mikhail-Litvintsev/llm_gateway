@@ -15,7 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $api_key_hash
  * @property ?string $signing_secret
- * @property ?array<string, mixed> $allowed_features
+ * @property array<string, mixed> $allowed_features
  * @property bool $is_dev_mode
  * @property ?string $monthly_spend_cap_usd
  * @property ?string $current_month_spend_usd

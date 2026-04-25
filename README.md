@@ -103,6 +103,8 @@ docker compose exec -T llm_gateway php artisan test
 docker compose exec -T llm_gateway php artisan test --testsuite=Unit
 ```
 
+PHPUnit forces test-DB credentials via `phpunit.xml`, so `php artisan test` works out of the box. For artisan commands run with `--env=testing` (e.g. `migrate:fresh --env=testing`) copy the template once: `cp .env.testing.example .env.testing`. Without it, `--env=testing` falls back to `.env` and would target the dev database.
+
 ## Running integration tests
 
 Integration tests hit the real Anthropic API and are opt-in. They are skipped by default.
