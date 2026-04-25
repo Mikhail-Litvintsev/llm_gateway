@@ -177,7 +177,7 @@ return [
         'http_retry' => [
             'max_attempts' => (int) env('CLAUDE_HTTP_RETRY_MAX_ATTEMPTS', 3),
             'base_delay_ms' => (int) env('CLAUDE_HTTP_RETRY_BASE_DELAY_MS', 500),
-            'retryable_statuses' => [429, 500, 502, 503, 504],
+            'retryable_statuses' => [429, 500, 502, 503, 504, 529],
         ],
 
         'files' => [

@@ -118,6 +118,80 @@ final class ClaudeHttpRetryTest extends TestCase
         $this->assertCount(2, Http::recorded());
     }
 
+    #[Test]
+    public function send_message_retries_on_529_with_exponential_backoff_and_succeeds_on_third_attempt(): void
+    {
+        config()->set('llm.claude.http_retry.base_delay_ms', 200);
+
+        Http::fake([
+            'https://api.anthropic.com/v1/messages' => Http::sequence()
+                ->push('overloaded', 529)
+                ->push('still overloaded', 529)
+                ->push(json_encode([
+                    'id' => 'msg_529',
+                    'type' => 'message',
+                    'role' => 'assistant',
+                    'content' => [['type' => 'text', 'text' => 'ok']],
+                    'model' => 'claude-sonnet-4-6',
+                    'usage' => ['input_tokens' => 10, 'output_tokens' => 5],
+                    'stop_reason' => 'end_turn',
+                ]), 200),
+        ]);
+
+        $start = microtime(true);
+        $output = $this->callSendMessage();
+        $elapsed = microtime(true) - $start;
+
+        $this->assertTrue($output->isSuccess);
+        $this->assertCount(3, Http::recorded());
+        $this->assertGreaterThanOrEqual(0.55, $elapsed, 'Exponential backoff: 200ms + 400ms between attempts → at least ~0.6s');
+        $this->assertLessThan(2.0, $elapsed, 'Backoff must not exceed expected exponential growth');
+    }
+
+    #[Test]
+    public function send_message_retries_on_529_and_respects_retry_after_header(): void
+    {
+        Http::fake([
+            'https://api.anthropic.com/v1/messages' => Http::sequence()
+                ->push('overloaded', 529, ['retry-after' => '1'])
+                ->push(json_encode([
+                    'id' => 'msg_529_ra',
+                    'type' => 'message',
+                    'role' => 'assistant',
+                    'content' => [['type' => 'text', 'text' => 'ok']],
+                    'model' => 'claude-sonnet-4-6',
+                    'usage' => ['input_tokens' => 10, 'output_tokens' => 5],
+                    'stop_reason' => 'end_turn',
+                ]), 200),
+        ]);
+
+        $start = microtime(true);
+        $output = $this->callSendMessage();
+        $elapsed = microtime(true) - $start;
+
+        $this->assertTrue($output->isSuccess);
+        $this->assertGreaterThanOrEqual(0.9, $elapsed, 'Retry-After=1 should add ~1s sleep');
+        $this->assertLessThan(3.0, $elapsed, 'Retry-After=1 should not fall back to exponential backoff');
+        $this->assertCount(2, Http::recorded());
+    }
+
+    #[Test]
+    public function send_message_returns_529_response_after_exhausting_retries(): void
+    {
+        config()->set('llm.claude.http_retry.max_attempts', 2);
+        config()->set('llm.claude.http_retry.base_delay_ms', 1);
+
+        Http::fake([
+            'https://api.anthropic.com/v1/messages' => Http::response('persistent overloaded', 529),
+        ]);
+
+        $output = $this->callSendMessage();
+
+        $this->assertFalse($output->isSuccess);
+        $this->assertSame(529, $output->envelope->httpStatusCode);
+        $this->assertCount(2, Http::recorded());
+    }
+
     private function callSendMessage()
     {
         $payload = new BuiltPayload(
