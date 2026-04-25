@@ -38,7 +38,11 @@ final class ClientCreate extends Command
         $plainSecret = 'whsec_'.bin2hex(random_bytes(32));
         $encryptedSecret = Crypt::encryptString($plainSecret);
 
-        $features = $this->parseFeatures($this->option('features'));
+        $rawFeatures = array_values(array_filter(
+            (array) $this->option('features'),
+            static fn (mixed $item): bool => is_string($item),
+        ));
+        $features = $this->parseFeatures($rawFeatures);
 
         $client = Client::create([
             'name' => $name,

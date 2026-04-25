@@ -107,7 +107,7 @@ final class Logging
         $retentionUntil = new DateTimeImmutable("+$retentionDays days");
 
         $maskedRequestPayload = PayloadMasker::mask(
-            json_encode($decodedPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            json_encode($decodedPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
         );
 
         if ($output->isSuccess) {
@@ -196,7 +196,7 @@ final class Logging
     ): void {
         $responsePayload = $output->parsedResponse !== null
             ? PayloadMasker::mask(
-                json_encode($output->parsedResponse, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                json_encode($output->parsedResponse, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             )
             : PayloadMasker::mask($output->envelope->rawBody);
 

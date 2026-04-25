@@ -35,7 +35,7 @@ final class SyncResponder
         $response->headers->set('X-Gateway-Model-Alias', $gateway->modelAlias);
         $response->headers->set('X-Gateway-Model-Snapshot', $gateway->modelSnapshot);
         $response->headers->set('X-Gateway-Cost-USD', number_format($gateway->costUsd, 6, '.', ''));
-        $response->headers->set('X-Gateway-Cost-Breakdown', base64_encode(json_encode($gateway->costBreakdown)));
+        $response->headers->set('X-Gateway-Cost-Breakdown', base64_encode(json_encode($gateway->costBreakdown, JSON_THROW_ON_ERROR)));
 
         $response->headers->set(
             'X-Gateway-Spend-Remaining-USD',

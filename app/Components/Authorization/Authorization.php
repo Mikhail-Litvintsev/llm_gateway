@@ -18,9 +18,9 @@ final class Authorization
     /**
      * @param  Client  $client  Hydrated Client model (no DB queries issued).
      * @param  string  $modelAlias  Resolved model alias (e.g. "claude-sonnet-4-6").
-     * @param  array<int, string>  $featuresUsed  Flat list of feature keys extracted from the validated payload.
-     *                                            Valid keys: thinking, web_search, code_execution, computer_use, bash, text_editor,
-     *                                            priority_tier, citations, prompt_caching, structured_outputs, batch.
+     * @param  list<string>  $featuresUsed  Flat list of feature keys extracted from the validated payload.
+     *                                      Valid keys: thinking, web_search, code_execution, computer_use, bash, text_editor,
+     *                                      priority_tier, citations, prompt_caching, structured_outputs, batch.
      */
     public function authorize(
         Client $client,

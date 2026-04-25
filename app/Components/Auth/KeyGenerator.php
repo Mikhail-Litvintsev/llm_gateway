@@ -18,6 +18,9 @@ final class KeyGenerator
         return substr($rawKey, 0, 12);
     }
 
+    /**
+     * @param  positive-int  $length
+     */
     private function randomBase62(int $length): string
     {
         $bytes = random_bytes($length);

@@ -47,7 +47,7 @@ final class BatchResultsStreamer
                         'message' => $resultLine->message,
                         'error' => $resultLine->error,
                     ],
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             }
 
             if ($hasResults) {
@@ -86,7 +86,7 @@ final class BatchResultsStreamer
                                 'message' => $item->error_message ?? '',
                             ] : null,
                         ],
-                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
                 }
             });
 

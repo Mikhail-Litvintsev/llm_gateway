@@ -22,8 +22,8 @@ final class BatchCacheMetrics
         $totalOutputTokens = 0;
         $totalSavings = '0';
 
-        $batchInputRate = (string) ($pricingTier['batch_input'] ?? 0);
-        $cacheReadRate = (string) ($pricingTier['cache_read'] ?? 0);
+        $batchInputRate = $this->numericString($pricingTier['batch_input'] ?? 0);
+        $cacheReadRate = $this->numericString($pricingTier['cache_read'] ?? 0);
         $savingsRatePerToken = bcsub($batchInputRate, $cacheReadRate, 12);
 
         foreach ($usageItems as $usage) {
@@ -58,5 +58,19 @@ final class BatchCacheMetrics
             cacheHitRatio: $cacheHitRatio,
             totalSavingsFromCachingUsd: $savingsFormatted,
         );
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function numericString(mixed $value): string
+    {
+        $string = (string) $value;
+
+        if (! is_numeric($string)) {
+            throw new \InvalidArgumentException("Pricing value must be numeric, got: $string");
+        }
+
+        return $string;
     }
 }

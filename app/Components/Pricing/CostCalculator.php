@@ -48,7 +48,7 @@ final class CostCalculator
         $cacheWrite1hCost = $this->tokenCost($usage->cacheCreation1hTokens, (string) $tier['cache_write_1h']);
         $cacheReadCost = $this->tokenCost($usage->cacheReadTokens, (string) $tier['cache_read']);
 
-        $webSearchRate = (string) ($serverTools['web_search_per_1k'] ?? 0);
+        $webSearchRate = $this->numericString($serverTools['web_search_per_1k'] ?? 0);
         $webSearchCost = new Money(bcdiv(bcmul((string) $usage->serverToolWebSearchCount, $webSearchRate, 12), '1000', 12));
         $codeExecCost = Money::zero();
 
@@ -85,6 +85,20 @@ final class CostCalculator
 
     private function tokenCost(int $tokens, string $ratePerMillion): Money
     {
-        return new Money(bcdiv(bcmul((string) $tokens, $ratePerMillion, 12), self::SCALE, 12));
+        return new Money(bcdiv(bcmul((string) $tokens, $this->numericString($ratePerMillion), 12), self::SCALE, 12));
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function numericString(mixed $value): string
+    {
+        $string = (string) $value;
+
+        if (! is_numeric($string)) {
+            throw new \InvalidArgumentException("Pricing value must be numeric, got: $string");
+        }
+
+        return $string;
     }
 }

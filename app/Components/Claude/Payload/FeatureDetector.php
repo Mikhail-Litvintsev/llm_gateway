@@ -17,7 +17,7 @@ final readonly class FeatureDetector
      * priority_tier, citations, prompt_caching, structured_outputs.
      *
      * @param  array<string, mixed>  $payload
-     * @return string[]
+     * @return list<string>
      */
     public function detect(array $payload): array
     {
@@ -52,7 +52,7 @@ final readonly class FeatureDetector
 
     /**
      * @param  array<int, mixed>  $tools
-     * @return string[]
+     * @return list<string>
      */
     private function detectToolFeatures(array $tools): array
     {

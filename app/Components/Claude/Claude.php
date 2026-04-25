@@ -421,7 +421,7 @@ final readonly class Claude implements MessageSender
             $nextCursor = base64_encode(json_encode([
                 'created_at' => $last->created_at->toIso8601String(),
                 'id' => $last->id,
-            ]));
+            ], JSON_THROW_ON_ERROR));
         }
 
         $files = $records->map(fn (FileRecord $r) => ClaudeFile::fromRecord($r))->values()->all();
@@ -430,7 +430,7 @@ final readonly class Claude implements MessageSender
     }
 
     /**
-     * @param  array<string, string|list<string>>  $headers
+     * @param  array<string, string>  $headers
      */
     private function handleSuccess(
         string $rawBody,
@@ -467,7 +467,7 @@ final readonly class Claude implements MessageSender
     }
 
     /**
-     * @param  array<string, string|list<string>>  $headers
+     * @param  array<string, string>  $headers
      */
     private function handleError(
         string $rawBody,

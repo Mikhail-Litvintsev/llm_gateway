@@ -94,7 +94,7 @@ final readonly class BatchResultApplier
                     'cache_read' => $costBreakdown->cacheReadCost->toFloat(),
                 ],
                 requestPayload: $item->payload,
-                responsePayload: json_encode($line->message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                responsePayload: json_encode($line->message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
                 retentionUntil: new DateTimeImmutable('+'.config('llm.raw_log_retention_days', 14).' days'),
             ));
         } else {

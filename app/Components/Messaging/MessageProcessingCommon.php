@@ -119,12 +119,12 @@ final readonly class MessageProcessingCommon
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     private function resolveFeatures(MessageRequestInput $input): array
     {
         $features = $this->featureDetector->detect($input->payload);
 
-        return [...$features, ...$input->additionalFeatures];
+        return array_values(array_unique([...$features, ...$input->additionalFeatures]));
     }
 }

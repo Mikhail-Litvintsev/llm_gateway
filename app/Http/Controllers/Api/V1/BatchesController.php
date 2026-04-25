@@ -145,7 +145,7 @@ final class BatchesController extends Controller
             $nextCursor = base64_encode(json_encode([
                 'created_at' => $last->created_at->toIso8601String(),
                 'id' => $last->id,
-            ]));
+            ], JSON_THROW_ON_ERROR));
         }
 
         $items = $batches->map(fn (BatchRecord $b) => $this->buildShowResponse($b))->values()->all();

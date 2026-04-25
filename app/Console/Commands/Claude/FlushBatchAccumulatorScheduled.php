@@ -43,13 +43,19 @@ final class FlushBatchAccumulatorScheduled extends Command
         $maxAge = $evaluator->triggerSeconds();
 
         do {
-            [$cursor, $keys] = Redis::connection('default')->scan(
+            $scanResult = Redis::connection('default')->scan(
                 $cursor,
                 'MATCH',
                 'acc:*:meta',
                 'COUNT',
                 100,
             );
+
+            if (! is_array($scanResult)) {
+                break;
+            }
+
+            [$cursor, $keys] = $scanResult;
 
             foreach ($keys as $metaKey) {
                 $firstAppendAt = Redis::connection('default')->hget($metaKey, 'first_append_at');

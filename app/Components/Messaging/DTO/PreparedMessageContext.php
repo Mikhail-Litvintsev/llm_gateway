@@ -12,7 +12,7 @@ use DateTimeImmutable;
 final readonly class PreparedMessageContext
 {
     /**
-     * @param  string[]  $featuresUsed
+     * @param  list<string>  $featuresUsed
      * @param  array<string, mixed>  $rawPayload
      * @param  array<string, mixed>  $injectedPayload
      */

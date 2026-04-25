@@ -106,7 +106,7 @@ final class PayloadBuilder
             $betaFeatures[] = 'computer_use';
         }
 
-        $betaHeaders = $this->collectBetaHeaders(array_unique($betaFeatures));
+        $betaHeaders = $this->collectBetaHeaders(array_values(array_unique($betaFeatures)));
 
         $jsonBody = $this->serialize($payload);
         $this->enforcePayloadSizeLimit($jsonBody);
@@ -570,7 +570,7 @@ final class PayloadBuilder
             $features[] = 'computer_use';
         }
 
-        return array_unique($features);
+        return array_values(array_unique($features));
     }
 
     /**
@@ -589,7 +589,7 @@ final class PayloadBuilder
             }
         }
 
-        return array_unique($headers);
+        return array_values(array_unique($headers));
     }
 
     /**

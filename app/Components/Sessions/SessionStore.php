@@ -132,11 +132,11 @@ final class SessionStore implements SessionStoreContract
      */
     public function loadFullHistory(Session $session): array
     {
-        return $session->messages()
+        return array_values($session->messages()
             ->orderBy('turn_index')
             ->get(['role', 'content'])
             ->map(fn (SessionMessage $m): array => ['role' => $m->role, 'content' => $m->content])
-            ->all();
+            ->all());
     }
 
     public function paginateHistory(Session $session, int $from, int $limit): SessionHistoryPage
@@ -145,7 +145,7 @@ final class SessionStore implements SessionStoreContract
         $query = $session->messages()->orderBy('turn_index');
         $total = $query->count();
 
-        $messages = $query
+        $messages = array_values($query
             ->offset($from)
             ->limit($limit)
             ->get()
@@ -158,7 +158,7 @@ final class SessionStore implements SessionStoreContract
                 'model' => $m->model,
                 'created_at' => $m->created_at?->toIso8601String(),
             ])
-            ->all();
+            ->all());
 
         return new SessionHistoryPage(
             from: $from,

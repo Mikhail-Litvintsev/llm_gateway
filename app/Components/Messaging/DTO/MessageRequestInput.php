@@ -11,7 +11,7 @@ final readonly class MessageRequestInput
 {
     /**
      * @param  array<string, mixed>  $payload
-     * @param  string[]  $additionalFeatures
+     * @param  list<string>  $additionalFeatures
      */
     public function __construct(
         public Client $client,

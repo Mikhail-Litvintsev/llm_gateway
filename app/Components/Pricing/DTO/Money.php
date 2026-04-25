@@ -6,9 +6,17 @@ namespace App\Components\Pricing\DTO;
 
 final readonly class Money
 {
-    public function __construct(
-        public string $amountUsd,
-    ) {}
+    /** @var numeric-string */
+    public string $amountUsd;
+
+    public function __construct(string $amountUsd)
+    {
+        if (! is_numeric($amountUsd)) {
+            throw new \InvalidArgumentException("Money amount must be numeric, got: $amountUsd");
+        }
+
+        $this->amountUsd = $amountUsd;
+    }
 
     public function add(Money $other): Money
     {
@@ -17,6 +25,10 @@ final readonly class Money
 
     public function multiply(string $factor): Money
     {
+        if (! is_numeric($factor)) {
+            throw new \InvalidArgumentException("Money factor must be numeric, got: $factor");
+        }
+
         return new Money(bcmul($this->amountUsd, $factor, 12));
     }
 

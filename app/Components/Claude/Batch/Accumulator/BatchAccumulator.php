@@ -115,7 +115,14 @@ final class BatchAccumulator
 
     private function loadAppendScript(): string
     {
-        return file_get_contents(__DIR__.'/lua/append_and_maybe_trigger.lua');
+        $path = __DIR__.'/lua/append_and_maybe_trigger.lua';
+        $contents = file_get_contents($path);
+
+        if ($contents === false) {
+            throw new \RuntimeException("Unable to read Lua script: $path");
+        }
+
+        return $contents;
     }
 
     private function ensureCallbackUrlConsistency(AccumulatorBucketKey $bucketKey, ?string $callbackUrl): void

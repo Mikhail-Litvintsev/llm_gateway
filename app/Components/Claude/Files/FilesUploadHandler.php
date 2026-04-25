@@ -31,12 +31,17 @@ final readonly class FilesUploadHandler
 
         if ($validationError !== null) {
             throw new RuntimeException(
-                json_encode(['type' => 'error', 'error' => ['type' => $validationError['code'], 'message' => $validationError['code']]]),
+                json_encode(['type' => 'error', 'error' => ['type' => $validationError['code'], 'message' => $validationError['code']]], JSON_THROW_ON_ERROR),
                 $validationError['status'],
             );
         }
 
         $workspace = $this->workspaces->resolveForClient($client);
+        $fileHandle = fopen($file->getRealPath(), 'rb');
+
+        if ($fileHandle === false) {
+            throw new RuntimeException("Unable to open uploaded file: {$file->getRealPath()}", 500);
+        }
 
         $response = Http::withHeaders([
             'x-api-key' => $workspace->apiKey,
@@ -44,7 +49,7 @@ final readonly class FilesUploadHandler
             'anthropic-beta' => config('llm.claude.beta_headers.files_api'),
         ])
             ->timeout(config('llm.claude.timeouts.request'))
-            ->attach('file', fopen($file->getRealPath(), 'rb'), $file->getClientOriginalName())
+            ->attach('file', $fileHandle, $file->getClientOriginalName())
             ->attach('purpose', $purpose->value)
             ->post(config('llm.claude.endpoints.files'));
 

@@ -210,7 +210,7 @@ final readonly class Sessions implements SessionsContract
         $this->store->softDelete($this->resolveSession($publicId));
     }
 
-    /** @return array{Session, Client, string[]} */
+    /** @return array{Session, Client, list<string>} */
     private function prepareSendContext(string $publicId): array
     {
         $session = $this->resolveActiveSession($publicId);
@@ -298,7 +298,7 @@ final readonly class Sessions implements SessionsContract
                 fn ($e) => ['path' => $e->path, 'code' => $e->code, 'message' => $e->message],
                 $validationResult->errors,
             );
-            throw new RuntimeException(json_encode(['errors' => $errors]), 422);
+            throw new RuntimeException(json_encode(['errors' => $errors], JSON_THROW_ON_ERROR), 422);
         }
     }
 

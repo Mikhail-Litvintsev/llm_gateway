@@ -31,7 +31,7 @@ final class DevModeStubber
     {
         $stubId = 'msg_stub_'.Str::random(24);
         $contentBlocks = $this->buildContentBlocks($request);
-        $inputTokens = (int) ceil(strlen(json_encode($request->messages)) / 4);
+        $inputTokens = (int) ceil(strlen(json_encode($request->messages, JSON_THROW_ON_ERROR)) / 4);
         $outputTokens = (int) ceil(strlen($this->stubContent) / 4);
         $cacheHit = $this->shouldSimulateCacheHit($request);
         $cacheReadTokens = $cacheHit ? (int) ceil($inputTokens * 0.6) : 0;
@@ -86,7 +86,7 @@ final class DevModeStubber
         $chunks = array_chunk($words, max(1, (int) ceil(count($words) / 5)));
         $sleepUs = (int) (($this->latencyMs * 1000) / count($chunks));
 
-        $inputTokens = (int) ceil(strlen(json_encode($request->messages)) / 4);
+        $inputTokens = (int) ceil(strlen(json_encode($request->messages, JSON_THROW_ON_ERROR)) / 4);
         $outputTokens = (int) ceil(strlen($this->stubContent) / 4);
 
         yield new StreamEvent('message_start', [
@@ -161,15 +161,16 @@ final class DevModeStubber
         }
 
         if ($hasWebSearch) {
+            $serverToolUseId = 'srvtoolu_stub_'.Str::random(12);
             $blocks[] = [
                 'type' => 'server_tool_use',
-                'id' => 'srvtoolu_stub_'.Str::random(12),
+                'id' => $serverToolUseId,
                 'name' => 'web_search_20250305',
                 'input' => ['query' => 'dev mode stub query'],
             ];
             $blocks[] = [
                 'type' => 'web_search_tool_result',
-                'tool_use_id' => $blocks[count($blocks) - 1]['id'],
+                'tool_use_id' => $serverToolUseId,
                 'content' => [
                     ['type' => 'web_search_result', 'url' => 'https://example.com', 'title' => 'Stub result', 'snippet' => 'Dev mode search result'],
                 ],
@@ -196,7 +197,7 @@ final class DevModeStubber
 
     private function shouldSimulateCacheHit(MessageRequest $request): bool
     {
-        $hash = crc32($request->modelAlias.json_encode($request->messages));
+        $hash = crc32($request->modelAlias.json_encode($request->messages, JSON_THROW_ON_ERROR));
 
         return (abs($hash) % 100) < ($this->cacheHitRate * 100);
     }

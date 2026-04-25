@@ -50,7 +50,7 @@ final readonly class FilesDeletionHandler
                 json_encode([
                     'type' => 'error',
                     'error' => ['type' => 'provider_error', 'message' => 'Upstream provider error during file deletion'],
-                ]),
+                ], JSON_THROW_ON_ERROR),
                 502,
             );
         }
@@ -59,7 +59,7 @@ final readonly class FilesDeletionHandler
             json_encode([
                 'type' => 'error',
                 'error' => ['type' => 'provider_error', 'message' => 'Unexpected response from provider: HTTP '.$status],
-            ]),
+            ], JSON_THROW_ON_ERROR),
             502,
         );
     }
