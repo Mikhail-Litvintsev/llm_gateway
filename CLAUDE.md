@@ -39,6 +39,14 @@ app/Components/
   Sessions/        Skills/           Usage/         Validation/
 ```
 
+## Качество кода
+
+- **PHPStan: level 8** (максимальный), baseline не используется. Команда: `vendor/bin/phpstan analyse --memory-limit=1G --no-progress`. Все ошибки устраняются по существу; `ignoreErrors` допустимы только для структурных проблем в stub'ах сторонних библиотек и требуют комментария-обоснования в `phpstan.neon`.
+- **Laravel Pint**: `vendor/bin/pint` (fix) / `vendor/bin/pint --test` (check). Конфигурация — Laravel default (`pint.json` отсутствует).
+- **PHPUnit 12**: атрибуты `#[Test]`, `#[DataProvider]`; `@test`/`@dataProvider` phpdoc-теги не используются.
+- **Strict typing**: `declare(strict_types=1);` — convention для нового кода в `app/`. Подавляющее большинство существующих файлов уже декларирует strict types.
+- **CI**: `.github/workflows/ci.yml` прогоняет на каждом push: composer audit → pint → phpstan → migrations → tests.
+
 ## Конфигурация
 
 - `config/llm.php` -- model_aliases, model_capabilities, pricing, beta_headers, caching, batch, thinking, skills, timeouts, webhook, billing, dev_mode, queues
