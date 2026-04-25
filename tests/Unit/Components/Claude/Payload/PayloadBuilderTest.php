@@ -7,9 +7,7 @@ namespace Tests\Unit\Components\Claude\Payload;
 use App\Components\Claude\Files\FilesRepository;
 use App\Components\Claude\Payload\DTO\BuiltPayload;
 use App\Components\Claude\Payload\Exceptions\PayloadBuildException;
-use App\Components\Claude\Payload\FileSourceResolver;
 use App\Components\Claude\Payload\PayloadBuilder;
-use App\Components\Routing\ModelResolver;
 use App\Models\Client;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -35,11 +33,10 @@ final class PayloadBuilderTest extends TestCase
     {
         parent::setUp();
 
-        $this->builder = new PayloadBuilder(
-            new ModelResolver,
-            new FileSourceResolver($this->createMock(FilesRepository::class)),
-            $this->betaHeaderMap,
-        );
+        config()->set('llm.claude.beta_headers', $this->betaHeaderMap);
+        $this->app->instance(FilesRepository::class, $this->createMock(FilesRepository::class));
+
+        $this->builder = $this->app->make(PayloadBuilder::class);
 
         $this->client = new Client;
         $this->client->forceFill([

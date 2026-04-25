@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Claude;
 
 use App\Components\Claude\Files\FilesRepository;
-use App\Components\Claude\Payload\FileSourceResolver;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Claude\ToolTypeCatalog;
-use App\Components\Routing\ModelResolver;
 use App\Components\Validation\MessageRequestValidator;
 use App\Components\Validation\ValidationContext;
 use App\Models\Client;
@@ -25,11 +23,9 @@ final class SkillsPayloadTest extends TestCase
     {
         parent::setUp();
 
-        $this->builder = new PayloadBuilder(
-            new ModelResolver,
-            new FileSourceResolver($this->createMock(FilesRepository::class)),
-            config('llm.claude.beta_headers'),
-        );
+        $this->app->instance(FilesRepository::class, $this->createMock(FilesRepository::class));
+
+        $this->builder = $this->app->make(PayloadBuilder::class);
 
         $this->validator = $this->app->make(MessageRequestValidator::class);
     }

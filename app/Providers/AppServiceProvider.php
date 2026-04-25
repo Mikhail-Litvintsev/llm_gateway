@@ -7,7 +7,15 @@ use App\Components\Claude\Beta\BetaHeaderRegistry;
 use App\Components\Claude\Claude;
 use App\Components\Claude\Contracts\MessageSender;
 use App\Components\Claude\Payload\FileSourceResolver;
+use App\Components\Claude\Payload\Normalisers\MessageContentNormaliser;
+use App\Components\Claude\Payload\Normalisers\ToolNormaliser;
 use App\Components\Claude\Payload\PayloadBuilder;
+use App\Components\Claude\Payload\Validators\CitationsStructuredOutputEnforcer;
+use App\Components\Claude\Payload\Validators\InferenceGeoGuard;
+use App\Components\Claude\Payload\Validators\MaxTokensEnforcer;
+use App\Components\Claude\Payload\Validators\PrefillCompatibilityEnforcer;
+use App\Components\Claude\Payload\Validators\ServiceTierGuard;
+use App\Components\Claude\Payload\Validators\ThinkingValidator;
 use App\Components\Pricing\CostCalculator;
 use App\Components\Routing\ModelResolver;
 use App\Components\Sessions\Contracts\SessionsContract;
@@ -56,6 +64,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PayloadBuilder::class, fn () => new PayloadBuilder(
             $this->app->make(ModelResolver::class),
             $this->app->make(FileSourceResolver::class),
+            $this->app->make(MaxTokensEnforcer::class),
+            $this->app->make(PrefillCompatibilityEnforcer::class),
+            $this->app->make(CitationsStructuredOutputEnforcer::class),
+            $this->app->make(ServiceTierGuard::class),
+            $this->app->make(InferenceGeoGuard::class),
+            $this->app->make(ThinkingValidator::class),
+            $this->app->make(MessageContentNormaliser::class),
+            $this->app->make(ToolNormaliser::class),
             config('llm.claude.beta_headers'),
         ));
 

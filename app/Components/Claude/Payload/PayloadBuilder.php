@@ -6,9 +6,16 @@ namespace App\Components\Claude\Payload;
 
 use App\Components\Claude\DTO\ContextManagementConfig;
 use App\Components\Claude\DTO\ThinkingSpec;
-use App\Components\Claude\Enums\ThinkingMode;
 use App\Components\Claude\Payload\DTO\BuiltPayload;
 use App\Components\Claude\Payload\Exceptions\PayloadBuildException;
+use App\Components\Claude\Payload\Normalisers\MessageContentNormaliser;
+use App\Components\Claude\Payload\Normalisers\ToolNormaliser;
+use App\Components\Claude\Payload\Validators\CitationsStructuredOutputEnforcer;
+use App\Components\Claude\Payload\Validators\InferenceGeoGuard;
+use App\Components\Claude\Payload\Validators\MaxTokensEnforcer;
+use App\Components\Claude\Payload\Validators\PrefillCompatibilityEnforcer;
+use App\Components\Claude\Payload\Validators\ServiceTierGuard;
+use App\Components\Claude\Payload\Validators\ThinkingValidator;
 use App\Components\Claude\ToolTypeCatalog;
 use App\Components\Routing\DTO\ResolvedModel;
 use App\Components\Routing\ModelResolver;
@@ -26,6 +33,14 @@ final class PayloadBuilder
     public function __construct(
         private readonly ModelResolver $models,
         private readonly FileSourceResolver $fileSourceResolver,
+        private readonly MaxTokensEnforcer $maxTokensEnforcer,
+        private readonly PrefillCompatibilityEnforcer $prefillEnforcer,
+        private readonly CitationsStructuredOutputEnforcer $citationsEnforcer,
+        private readonly ServiceTierGuard $serviceTierGuard,
+        private readonly InferenceGeoGuard $inferenceGeoGuard,
+        private readonly ThinkingValidator $thinkingValidator,
+        private readonly MessageContentNormaliser $messageContentNormaliser,
+        private readonly ToolNormaliser $toolNormaliser,
         private readonly array $betaHeaderMap,
     ) {}
 
@@ -54,28 +69,28 @@ final class PayloadBuilder
 
         $warnings = [];
 
-        $this->enforceMaxTokensCap($validatedPayload, $capabilities, $alias);
-        $this->enforcePrefillCompatibility($validatedPayload, $capabilities, $alias);
+        $this->maxTokensEnforcer->enforce($validatedPayload, $capabilities, $alias);
+        $this->prefillEnforcer->enforce($validatedPayload, $capabilities, $alias);
 
         $thinkingSpec = ThinkingSpec::fromArray($validatedPayload['thinking'] ?? null);
-        $this->validateThinking($thinkingSpec, $validatedPayload, $capabilities, $alias, $warnings);
+        $this->thinkingValidator->validate($thinkingSpec, $validatedPayload, $capabilities, $alias, $warnings);
 
-        $this->enforceCitationsVsStructuredOutput($validatedPayload);
-        $this->enforceServiceTierPermission($validatedPayload, $client);
-        $this->enforceInferenceGeo($validatedPayload, $client);
+        $this->citationsEnforcer->enforce($validatedPayload);
+        $this->serviceTierGuard->enforce($validatedPayload, $client);
+        $this->inferenceGeoGuard->enforce($validatedPayload, $client);
 
         if ($thinkingSpec->isEnabled()) {
-            $validatedPayload['thinking'] = $this->buildThinkingPayload($thinkingSpec);
+            $validatedPayload['thinking'] = $this->thinkingValidator->buildPayload($thinkingSpec);
         }
 
         $payload = $this->assemblePayload($validatedPayload, $resolved);
-        $payload['messages'] = $this->normaliseMessageContent($payload['messages']);
+        $payload['messages'] = $this->messageContentNormaliser->normalise($payload['messages']);
         $payload['messages'] = $this->resolveFileSourcesInMessages($payload['messages'], $client);
 
         $serverToolTypes = [];
         $hasPtcTool = false;
         if (! empty($payload['tools'])) {
-            [$payload['tools'], $serverToolTypes, $hasPtcTool] = $this->normaliseTools($payload['tools']);
+            [$payload['tools'], $serverToolTypes, $hasPtcTool] = $this->toolNormaliser->normalise($payload['tools']);
         }
 
         if ($hasPtcTool && ! empty($validatedPayload['disable_parallel_tool_use'])) {
@@ -123,219 +138,6 @@ final class PayloadBuilder
         );
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $capabilities
-     */
-    private function enforceMaxTokensCap(array $payload, array $capabilities, string $alias): void
-    {
-        $maxTokens = $payload['max_tokens'] ?? null;
-        $maxOutput = $capabilities['max_output'] ?? null;
-
-        if ($maxTokens !== null && $maxOutput !== null && $maxTokens > $maxOutput) {
-            throw PayloadBuildException::invalidRequest(
-                "max_tokens ($maxTokens) exceeds model $alias maximum output ($maxOutput)"
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $capabilities
-     */
-    private function enforcePrefillCompatibility(array $payload, array $capabilities, string $alias): void
-    {
-        $messages = $payload['messages'] ?? [];
-
-        if (empty($messages)) {
-            return;
-        }
-
-        $lastMessage = end($messages);
-
-        if (($lastMessage['role'] ?? '') === 'assistant' && ! ($capabilities['supports_prefill'] ?? true)) {
-            throw PayloadBuildException::invalidRequest(
-                "Model $alias does not support assistant prefill"
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $capabilities
-     * @param  list<array<string, string>>  $warnings
-     */
-    private function validateThinking(
-        ThinkingSpec $spec,
-        array $payload,
-        array $capabilities,
-        string $alias,
-        array &$warnings,
-    ): void {
-        if (! $spec->isEnabled()) {
-            return;
-        }
-
-        match ($spec->mode) {
-            ThinkingMode::Adaptive => $this->validateAdaptiveThinking($spec, $capabilities, $alias),
-            ThinkingMode::Manual => $this->validateManualThinking($spec, $payload, $capabilities, $alias, $warnings),
-            default => null,
-        };
-
-        $this->validateSamplingWithThinking($payload);
-    }
-
-    /**
-     * @param  array<string, mixed>  $capabilities
-     */
-    private function validateAdaptiveThinking(ThinkingSpec $spec, array $capabilities, string $alias): void
-    {
-        if (! ($capabilities['supports_adaptive_thinking'] ?? false)) {
-            throw PayloadBuildException::invalidRequest("Adaptive thinking not supported on $alias");
-        }
-
-        $effort = $spec->effort ?? config('llm.claude.adaptive_thinking.default_effort', 'medium');
-        if (! in_array($effort, ['low', 'medium', 'high'], true)) {
-            throw PayloadBuildException::invalidRequest("Invalid thinking effort: '$effort' — must be low, medium, or high");
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $capabilities
-     * @param  list<array<string, string>>  $warnings
-     */
-    private function validateManualThinking(
-        ThinkingSpec $spec,
-        array $payload,
-        array $capabilities,
-        string $alias,
-        array &$warnings,
-    ): void {
-        if (! ($capabilities['supports_thinking'] ?? false)) {
-            throw PayloadBuildException::invalidRequest("$alias does not support extended thinking");
-        }
-
-        $budget = $spec->budgetTokens;
-        if ($budget !== null && $budget <= 0) {
-            throw PayloadBuildException::invalidRequest('budget_tokens must be greater than 0');
-        }
-
-        $requiresBelowMax = ! ($capabilities['supports_adaptive_thinking'] ?? false);
-        $maxTokens = $payload['max_tokens'] ?? null;
-
-        if ($requiresBelowMax && $budget !== null && $maxTokens !== null && $budget >= $maxTokens) {
-            throw PayloadBuildException::invalidRequest(
-                "budget_tokens ($budget) must be less than max_tokens ($maxTokens) on $alias"
-            );
-        }
-
-        if ($capabilities['supports_adaptive_thinking'] ?? false) {
-            $warnings[] = [
-                'code' => 'thinking.manual_deprecated',
-                'message' => "Manual thinking budget_tokens is deprecated on $alias — prefer thinking.type: 'adaptive'",
-            ];
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateSamplingWithThinking(array $payload): void
-    {
-        if (isset($payload['tool_choice'])) {
-            $tcType = $payload['tool_choice']['type'] ?? $payload['tool_choice'];
-            if (! in_array($tcType, ['auto', 'none'], true)) {
-                throw PayloadBuildException::invalidRequest(
-                    "tool_choice must be 'auto' or 'none' when thinking is enabled"
-                );
-            }
-        }
-
-        if (isset($payload['top_p'])) {
-            $topP = (float) $payload['top_p'];
-            if ($topP < 0.95 || $topP > 1.0) {
-                throw PayloadBuildException::invalidRequest(
-                    "top_p must be within [0.95, 1.0] when thinking is enabled, got $topP"
-                );
-            }
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildThinkingPayload(ThinkingSpec $spec): array
-    {
-        return match ($spec->mode) {
-            ThinkingMode::Adaptive => [
-                'type' => 'adaptive',
-                'effort' => $spec->effort ?? config('llm.claude.adaptive_thinking.default_effort', 'medium'),
-            ],
-            ThinkingMode::Manual => array_filter([
-                'type' => 'enabled',
-                'budget_tokens' => $spec->budgetTokens,
-            ], fn ($v) => $v !== null),
-            default => [],
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function enforceCitationsVsStructuredOutput(array $payload): void
-    {
-        $citationsEnabled = ($payload['citations']['enabled'] ?? false) === true;
-        $hasOutputFormat = isset($payload['output_config']['format']);
-
-        if ($citationsEnabled && $hasOutputFormat) {
-            throw PayloadBuildException::invalidRequest(
-                'Citations and structured output formats are mutually exclusive'
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function enforceServiceTierPermission(array $payload, Client $client): void
-    {
-        $serviceTier = $payload['service_tier'] ?? null;
-
-        if ($serviceTier !== 'priority') {
-            return;
-        }
-
-        $allowedFeatures = $client->allowed_features ?? [];
-
-        if (! ($allowedFeatures['priority_tier'] ?? false)) {
-            throw PayloadBuildException::permissionError(
-                'Client is not authorized to use priority service tier'
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function enforceInferenceGeo(array $payload, Client $client): void
-    {
-        $inferenceGeo = $payload['inference_geo'] ?? null;
-
-        if ($inferenceGeo === null) {
-            return;
-        }
-
-        $clientGeo = $client->inference_geo ?? null;
-        $allowedFeatures = $client->allowed_features ?? [];
-
-        if ($clientGeo !== $inferenceGeo && ! ($allowedFeatures['inference_geo_override'] ?? false)) {
-            throw PayloadBuildException::invalidRequest(
-                "Inference geo '$inferenceGeo' is not allowed for this client"
-            );
-        }
-    }
-
     private function enforcePayloadSizeLimit(string $jsonBody): void
     {
         if (strlen($jsonBody) > self::MAX_PAYLOAD_BYTES) {
@@ -343,69 +145,6 @@ final class PayloadBuilder
                 'Payload exceeds maximum size of 32MB'
             );
         }
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $messages
-     * @return array<int, array<string, mixed>>
-     */
-    private function normaliseMessageContent(array $messages): array
-    {
-        foreach ($messages as &$message) {
-            $content = $message['content'] ?? [];
-            if (! is_array($content)) {
-                continue;
-            }
-
-            foreach ($content as &$block) {
-                if (! is_array($block) || ($block['type'] ?? '') !== 'search_result') {
-                    continue;
-                }
-                $block = $this->normaliseSearchResultBlock($block);
-            }
-        }
-
-        return $messages;
-    }
-
-    /**
-     * @param  array<string, mixed>  $block
-     * @return array<string, mixed>
-     */
-    private function normaliseSearchResultBlock(array $block): array
-    {
-        $allowedKeys = ['type', 'title', 'source', 'content', 'citations'];
-        $unknown = array_diff(array_keys($block), $allowedKeys);
-
-        if ($unknown !== []) {
-            throw PayloadBuildException::invalidRequest(
-                'Unknown key on search_result block: '.reset($unknown)
-            );
-        }
-
-        foreach (['title', 'source', 'content'] as $required) {
-            if (! isset($block[$required])) {
-                throw PayloadBuildException::invalidRequest(
-                    "search_result block missing required key: $required"
-                );
-            }
-        }
-
-        foreach ($block['content'] as $inner) {
-            if (! is_array($inner) || ($inner['type'] ?? '') !== 'text') {
-                throw PayloadBuildException::invalidRequest(
-                    'search_result.content only accepts text blocks'
-                );
-            }
-        }
-
-        if (isset($block['citations']) && (! is_array($block['citations']) || ! array_key_exists('enabled', $block['citations']))) {
-            throw PayloadBuildException::invalidRequest(
-                'search_result: citations must be {enabled: bool}'
-            );
-        }
-
-        return $block;
     }
 
     /**
@@ -598,303 +337,6 @@ final class PayloadBuilder
     private function serialize(array $payload): string
     {
         return json_encode($payload, self::JSON_OPTIONS);
-    }
-
-    private const array SERVER_TOOL_TYPES = [
-        ToolTypeCatalog::WEB_SEARCH,
-        ToolTypeCatalog::WEB_FETCH,
-        ToolTypeCatalog::CODE_EXECUTION,
-        ToolTypeCatalog::TOOL_SEARCH_REGEX,
-        ToolTypeCatalog::TOOL_SEARCH_BM25,
-        ToolTypeCatalog::MEMORY,
-        ToolTypeCatalog::BASH,
-        ToolTypeCatalog::TEXT_EDITOR,
-        ToolTypeCatalog::COMPUTER,
-    ];
-
-    /**
-     * @param  array<int, array<string, mixed>>  $rawTools
-     * @return array{0: array<int, array<string, mixed>>, 1: list<string>, 2: bool} [normalisedTools, serverToolTypes, hasPtcTool]
-     */
-    private function normaliseTools(array $rawTools): array
-    {
-        $serverToolTypes = [];
-        $hasToolSearch = false;
-
-        foreach ($rawTools as $tool) {
-            $type = $tool['type'] ?? null;
-            if (is_string($type) && in_array($type, self::SERVER_TOOL_TYPES, true)) {
-                if (! in_array($type, $serverToolTypes, true)) {
-                    $serverToolTypes[] = $type;
-                }
-                if (ToolTypeCatalog::isToolSearch($type)) {
-                    $hasToolSearch = true;
-                }
-            }
-        }
-
-        $hasCodeExecution = in_array(ToolTypeCatalog::CODE_EXECUTION, $serverToolTypes, true);
-        $hasPtcTool = false;
-        $normalised = [];
-
-        foreach ($rawTools as $tool) {
-            $type = $tool['type'] ?? null;
-
-            if (is_string($type) && in_array($type, self::SERVER_TOOL_TYPES, true)) {
-                $normalised[] = $this->normaliseServerTool($type, $tool);
-            } else {
-                $norm = $this->normaliseCustomTool($tool, $hasCodeExecution);
-                if (isset($norm['allowed_callers'])) {
-                    $hasPtcTool = true;
-                }
-                $normalised[] = $norm;
-            }
-        }
-
-        // PTC + disable_parallel_tool_use check deferred to build() where payload is available
-
-        $this->enforceMemoryUniqueness($serverToolTypes);
-
-        $customCount = count($normalised) - count($serverToolTypes);
-        $customCap = $hasToolSearch ? 10_000 : (int) config('llm.claude.max_custom_tools', 128);
-
-        if ($customCount > $customCap) {
-            throw PayloadBuildException::invalidRequest(
-                "Too many custom tools ($customCount), maximum is $customCap"
-            );
-        }
-
-        return [$normalised, $serverToolTypes, $hasPtcTool];
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseServerTool(string $type, array $tool): array
-    {
-        return match ($type) {
-            ToolTypeCatalog::WEB_SEARCH => $this->normaliseWebSearch($tool),
-            ToolTypeCatalog::WEB_FETCH => $this->normaliseWebFetch($tool),
-            ToolTypeCatalog::CODE_EXECUTION => $this->normaliseCodeExecution($tool),
-            ToolTypeCatalog::TOOL_SEARCH_REGEX,
-            ToolTypeCatalog::TOOL_SEARCH_BM25 => $this->normaliseToolSearch($tool),
-            ToolTypeCatalog::MEMORY => $this->normaliseMemory($tool),
-            ToolTypeCatalog::BASH => $this->normaliseBash($tool),
-            ToolTypeCatalog::TEXT_EDITOR => $this->normaliseTextEditor($tool),
-            ToolTypeCatalog::COMPUTER => $this->normaliseComputer($tool),
-            default => throw PayloadBuildException::invalidRequest("Unsupported server tool type: $type"),
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseWebSearch(array $tool): array
-    {
-        $allowed = ['type', 'name', 'max_uses', 'allowed_domains', 'blocked_domains', 'user_location'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        if (isset($tool['allowed_domains'], $tool['blocked_domains'])) {
-            throw PayloadBuildException::invalidRequest(
-                'web_search: allowed_domains and blocked_domains cannot be combined'
-            );
-        }
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseWebFetch(array $tool): array
-    {
-        $allowed = ['type', 'name', 'max_content_tokens', 'citations'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        if (isset($tool['citations']) && (! is_array($tool['citations']) || ! array_key_exists('enabled', $tool['citations']))) {
-            throw PayloadBuildException::invalidRequest(
-                'web_fetch: citations must be {enabled: bool}'
-            );
-        }
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseCodeExecution(array $tool): array
-    {
-        $allowed = ['type', 'name', 'container'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseToolSearch(array $tool): array
-    {
-        $allowed = ['type', 'name', 'max_results'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseMemory(array $tool): array
-    {
-        $allowed = ['type', 'name'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseBash(array $tool): array
-    {
-        $allowed = ['type', 'name'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseTextEditor(array $tool): array
-    {
-        $allowed = ['type', 'name'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        return $this->pickKeys($tool, $allowed);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseComputer(array $tool): array
-    {
-        $allowed = ['type', 'name', 'display_width_px', 'display_height_px', 'display_number'];
-        $this->rejectUnknownKeys($tool, $allowed, $tool['type']);
-
-        if (! isset($tool['display_width_px'], $tool['display_height_px'])) {
-            throw PayloadBuildException::invalidRequest(
-                'computer: display_width_px and display_height_px are required'
-            );
-        }
-
-        $result = $this->pickKeys($tool, $allowed);
-        $result['display_number'] ??= 1;
-
-        return $result;
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseCustomTool(array $tool, bool $hasCodeExecution): array
-    {
-        if (! isset($tool['allowed_callers'])) {
-            return $tool;
-        }
-
-        return $this->normaliseCustomToolWithPtc($tool, $hasCodeExecution);
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @return array<string, mixed>
-     */
-    private function normaliseCustomToolWithPtc(array $tool, bool $hasCodeExecution): array
-    {
-        $callers = $tool['allowed_callers'];
-
-        if (! is_array($callers) || $callers === []) {
-            throw PayloadBuildException::invalidRequest('allowed_callers must contain at least one entry');
-        }
-
-        $validValues = ['direct', ToolTypeCatalog::CODE_EXECUTION];
-        $normalized = [];
-
-        foreach ($callers as $v) {
-            if (! in_array($v, $validValues, true)) {
-                throw PayloadBuildException::invalidRequest("Invalid allowed_callers value: $v");
-            }
-            $normalized[$v] = true;
-        }
-
-        $tool['allowed_callers'] = array_keys($normalized);
-
-        if (isset($normalized[ToolTypeCatalog::CODE_EXECUTION]) && ! $hasCodeExecution) {
-            throw PayloadBuildException::invalidRequest(
-                'allowed_callers references code_execution but code_execution tool is absent'
-            );
-        }
-
-        if (($tool['strict'] ?? false) === true) {
-            throw PayloadBuildException::invalidRequest('PTC is incompatible with strict: true');
-        }
-
-        return $tool;
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @param  list<string>  $allowed
-     */
-    private function rejectUnknownKeys(array $tool, array $allowed, string $type): void
-    {
-        $unknown = array_diff(array_keys($tool), $allowed);
-
-        if ($unknown !== []) {
-            $key = reset($unknown);
-            throw PayloadBuildException::invalidRequest(
-                "Unknown option '$key' on server tool '$type'"
-            );
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $tool
-     * @param  list<string>  $keys
-     * @return array<string, mixed>
-     */
-    private function pickKeys(array $tool, array $keys): array
-    {
-        return array_intersect_key($tool, array_flip($keys));
-    }
-
-    /**
-     * @param  list<string>  $serverToolTypes
-     */
-    private function enforceMemoryUniqueness(array $serverToolTypes): void
-    {
-        $memoryCount = 0;
-        foreach ($serverToolTypes as $type) {
-            if (ToolTypeCatalog::isMemoryTool($type)) {
-                $memoryCount++;
-            }
-        }
-
-        if ($memoryCount > 1) {
-            throw PayloadBuildException::invalidRequest('memory tool must appear at most once');
-        }
     }
 
     /**

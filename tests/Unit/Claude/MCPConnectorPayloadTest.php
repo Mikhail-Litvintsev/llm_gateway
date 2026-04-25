@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Claude;
 
 use App\Components\Claude\Files\FilesRepository;
-use App\Components\Claude\Payload\FileSourceResolver;
 use App\Components\Claude\Payload\PayloadBuilder;
 use App\Components\Claude\Response\ResponseParser;
 use App\Components\Logging\PayloadMasker;
-use App\Components\Routing\ModelResolver;
 use App\Models\Client;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -24,16 +22,15 @@ final class MCPConnectorPayloadTest extends TestCase
     {
         parent::setUp();
 
-        $this->builder = new PayloadBuilder(
-            new ModelResolver,
-            new FileSourceResolver($this->createMock(FilesRepository::class)),
-            [
-                'mcp_client' => 'mcp-client-2025-11-20',
-                'files_api' => 'files-api-2025-04-14',
-                'skills' => 'skills-2025-10-02',
-                'fast_mode' => 'fast-mode-2026-02-01',
-            ],
-        );
+        config()->set('llm.claude.beta_headers', [
+            'mcp_client' => 'mcp-client-2025-11-20',
+            'files_api' => 'files-api-2025-04-14',
+            'skills' => 'skills-2025-10-02',
+            'fast_mode' => 'fast-mode-2026-02-01',
+        ]);
+        $this->app->instance(FilesRepository::class, $this->createMock(FilesRepository::class));
+
+        $this->builder = $this->app->make(PayloadBuilder::class);
 
         $this->client = new Client;
         $this->client->forceFill([
