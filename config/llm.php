@@ -197,6 +197,10 @@ return [
         'batch' => 'batch',
     ],
 
+    'rate_limit' => [
+        'default_per_minute' => (int) env('GATEWAY_DEFAULT_RATE_LIMIT_PER_MINUTE', 600),
+    ],
+
     'dev_mode' => [
         'latency_ms' => (int) env('DEV_MODE_LATENCY_MS', 150),
         'content' => env('DEV_MODE_CONTENT', 'This is a dev_mode stub response.'),

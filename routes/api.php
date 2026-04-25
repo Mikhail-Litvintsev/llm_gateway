@@ -10,7 +10,7 @@ use App\Http\Controllers\Api\V1\SessionsController;
 use App\Http\Controllers\Api\V1\SkillsController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth.api_key'])
+Route::middleware(['auth.api_key', 'throttle:api-client'])
     ->prefix('v1')
     ->group(function () {
         Route::post('/messages', [MessagesController::class, 'send']);

@@ -19,7 +19,12 @@ use App\Components\Skills\EloquentSkillsRepository;
 use App\Components\Usage\UsageReportFetcher;
 use App\Components\Validation\MessageRequestValidator;
 use App\Components\Validation\Rules\ServerFeaturesRule;
+use App\Models\Client;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Opis\JsonSchema\Validator;
 
@@ -81,6 +86,29 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        RateLimiter::for('api-client', function (Request $request): Limit {
+            $client = $request->attributes->get('auth.client');
+
+            if (! $client instanceof Client) {
+                return Limit::none();
+            }
+
+            $limit = $client->rate_limit_rpm > 0
+                ? $client->rate_limit_rpm
+                : (int) config('llm.rate_limit.default_per_minute', 600);
+
+            return Limit::perMinute($limit)
+                ->by('client:'.$client->id)
+                ->response(fn (Request $request, array $headers): JsonResponse => new JsonResponse(
+                    [
+                        'error' => [
+                            'type' => 'rate_limit_error',
+                            'message' => 'Request rate limit exceeded. Retry after the time indicated by the Retry-After header.',
+                        ],
+                    ],
+                    429,
+                    $headers,
+                ));
+        });
     }
 }

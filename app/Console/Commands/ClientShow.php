@@ -68,7 +68,7 @@ final class ClientShow extends Command
             ['Property', 'Value'],
             [
                 ['Workspace ID', (string) ($client->workspace_id ?? 'none')],
-                ['Rate Limit (RPM)', (string) ($client->rate_limit_per_minute ?? 'unlimited')],
+                ['Rate Limit (RPM)', (string) ($client->rate_limit_rpm ?? 'unlimited')],
                 ['Dev Mode', $client->is_dev_mode ? 'yes' : 'no'],
                 ['Allowed Features', $featuresDisplay],
                 ['Monthly Cap', $capUsd],

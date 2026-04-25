@@ -15,7 +15,9 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -48,9 +50,18 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.api_key' => ApiKeyAuth::class,
             'internal.network' => InternalNetworkOnly::class,
         ]);
+
+        $middleware->prependToPriorityList(
+            before: ThrottleRequests::class,
+            prepend: ApiKeyAuth::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (Throwable $e, Request $request) {
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
+            }
+
             if ($e instanceof SessionNotFoundException) {
                 return response()->json([
                     'type' => 'error',

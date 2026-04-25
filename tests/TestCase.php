@@ -34,6 +34,10 @@ abstract class TestCase extends BaseTestCase
 
         // Redirect the llm log channel to null in tests to avoid file permission issues
         config(['logging.channels.llm.driver' => 'monolog', 'logging.channels.llm.handler' => NullHandler::class]);
+
+        // Avoid accidental rate limiting in tests that create clients with rate_limit_rpm=null.
+        // Tests that exercise rate limiting override this back to a small number.
+        config(['llm.rate_limit.default_per_minute' => 10_000]);
     }
 
     private function forceEnv(string $name, string $value): void

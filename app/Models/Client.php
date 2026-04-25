@@ -19,7 +19,7 @@ use Illuminate\Support\Carbon;
  * @property bool $is_dev_mode
  * @property ?string $monthly_spend_cap_usd
  * @property ?string $current_month_spend_usd
- * @property ?int $rate_limit_per_minute
+ * @property ?int $rate_limit_rpm
  * @property ?int $workspace_id
  * @property ?string $inference_geo
  * @property ?string $anthropic_workspace_id
