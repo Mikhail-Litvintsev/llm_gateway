@@ -1,89 +1,91 @@
 # Operational Runbook -- LLM Gateway v4
 
-Целевая аудитория: дежурные инженеры, обрабатывающие инциденты.
+Target audience: on-call engineers handling incidents.
 
 ---
 
-## Содержание
+## Table of contents
 
-1. [Как читать claude:status](#1-как-читать-claudestatus)
-2. [Что делать при claude:status = degraded](#2-что-делать-при-claudestatus--degraded)
-3. [Как вручную дергать claude:resume](#3-как-вручную-дергать-clauderesume)
+1. [How to read claude:status](#1-how-to-read-claudestatus)
+2. [What to do when claude:status = degraded](#2-what-to-do-when-claudestatus--degraded)
+3. [How to trigger claude:resume manually](#3-how-to-trigger-clauderesume-manually)
 4. [Debug failed webhook deliveries](#4-debug-failed-webhook-deliveries)
 5. [Debug stuck batch](#5-debug-stuck-batch)
-6. [Как обновлять model aliases](#6-как-обновлять-model-aliases)
-7. [Как обновлять pricing](#7-как-обновлять-pricing)
-8. [Как обновлять beta headers](#8-как-обновлять-beta-headers)
-9. [Как чистить orphaned files](#9-как-чистить-orphaned-files)
-10. [Как извлекать данные о клиенте по request_id](#10-как-извлекать-данные-о-клиенте-по-request_id)
+6. [How to update model aliases](#6-how-to-update-model-aliases)
+7. [How to update pricing](#7-how-to-update-pricing)
+8. [How to update beta headers](#8-how-to-update-beta-headers)
+9. [How to clean up orphaned files](#9-how-to-clean-up-orphaned-files)
+10. [How to extract client data by request_id](#10-how-to-extract-client-data-by-request_id)
 11. [Drop legacy tables safeguard](#11-drop-legacy-tables-safeguard)
-12. [Streaming pool мониторинг](#12-streaming-pool-мониторинг)
-13. [Эскалация: когда писать в Anthropic support](#13-эскалация-когда-писать-в-anthropic-support)
+12. [Streaming pool monitoring](#12-streaming-pool-monitoring)
+13. [Escalation: when to file with Anthropic support](#13-escalation-when-to-file-with-anthropic-support)
+14. [Adjust client rate limit](#adjust-client-rate-limit)
+15. [Migrations](#migrations)
 
 ---
 
-## 1. Как читать claude:status
+## 1. How to read claude:status
 
 ```bash
 php artisan claude:status
 ```
 
-### Что выводит
+### What it prints
 
-Команда читает кеш из Redis (`claude:healthcheck:anthropic`) и ключи rate limit (`claude_rl:*`).
+The command reads the Redis cache (`claude:healthcheck:anthropic`) and rate limit keys (`claude_rl:*`).
 
-**Блок 1 -- Anthropic API Status**
+**Block 1 -- Anthropic API Status**
 
-Состояние upstream:
-- `OK` (зеленый) -- Anthropic API отвечает нормально, latency в пределах нормы
-- `DEGRADED` (желтый) -- нет свежих данных о пинге, либо Anthropic отвечает с повышенной latency
-- `DOWN` (красный) -- Anthropic не отвечает, последний пинг завершился ошибкой
+Upstream state:
+- `OK` (green) -- Anthropic API responds normally, latency within range
+- `DEGRADED` (yellow) -- no fresh ping data, or Anthropic responds with elevated latency
+- `DOWN` (red) -- Anthropic does not respond, last ping ended in error
 
-Поля:
-- **Latency** -- время ответа Anthropic healthcheck в миллисекундах
-- **Error** -- текст ошибки (только при DEGRADED/DOWN)
-- **Last check** -- время последней проверки
+Fields:
+- **Latency** -- Anthropic healthcheck response time in milliseconds
+- **Error** -- error text (only on DEGRADED/DOWN)
+- **Last check** -- timestamp of the last probe
 
-**Блок 2 -- Rate Limit Snapshots**
+**Block 2 -- Rate Limit Snapshots**
 
-Таблица по моделям с колонками:
-- **Model** -- snapshot модели (например `claude-sonnet-4-6`)
-- **Input Tokens (rem/lim)** -- оставшиеся / лимит входных токенов
-- **Output Tokens (rem/lim)** -- оставшиеся / лимит выходных токенов
-- **Requests (rem/lim)** -- оставшиеся / лимит запросов
-- **Recorded At** -- когда снимок был записан
+Per-model table with columns:
+- **Model** -- model snapshot (for example `claude-sonnet-4-6`)
+- **Input Tokens (rem/lim)** -- remaining / limit input tokens
+- **Output Tokens (rem/lim)** -- remaining / limit output tokens
+- **Requests (rem/lim)** -- remaining / limit request count
+- **Recorded At** -- when the snapshot was captured
 
-Если данных нет -- выводится `No rate limit data cached.`
+If no data is present, the output reads `No rate limit data cached.`
 
-**Блок 3 -- Global Pause**
+**Block 3 -- Global Pause**
 
-Если установлен Redis-ключ `claude:pause:global`, выводится предупреждение:
-```
+If the Redis key `claude:pause:global` is set, a warning is printed:
+```text
 Global pause is ACTIVE. Run `claude:resume` to clear.
 ```
 
 ### Exit codes
 
-- `0` -- статус OK или DEGRADED
-- `1` -- статус DOWN
+- `0` -- status OK or DEGRADED
+- `1` -- status DOWN
 
-Для мониторинга: используйте exit code в cron/healthcheck скриптах.
+For monitoring: use the exit code in cron/healthcheck scripts.
 
 ---
 
-## 2. Что делать при claude:status = degraded
+## 2. What to do when claude:status = degraded
 
-Пошаговое дерево решений:
+Step-by-step decision tree.
 
-### Шаг 1. Проверить очереди
+### Step 1. Check the queues
 
 ```bash
 php artisan queue:monitor high,default,low,batch
 ```
 
-Если backlog растет (> 100 jobs за 5 минут) -- запросы копятся. Перейти к шагу 2.
+If the backlog grows (> 100 jobs in 5 minutes), requests are piling up. Proceed to step 2.
 
-### Шаг 2. Проверить failed jobs
+### Step 2. Check failed jobs
 
 ```sql
 SELECT id, uuid, connection, queue, payload, exception, failed_at
@@ -92,20 +94,20 @@ ORDER BY failed_at DESC
 LIMIT 20;
 ```
 
-Если есть свежие ошибки:
-- `ProcessAsyncMessage` с ошибкой timeout -- upstream медленный, перейти к шагу 4
-- `DeliverWebhook` -- клиент не принимает callback, см. [секцию 4](#4-debug-failed-webhook-deliveries)
-- Другие -- читать `exception`, искать root cause в логах:
+If recent failures exist:
+- `ProcessAsyncMessage` with timeout -- upstream is slow, proceed to step 4
+- `DeliverWebhook` -- the client does not accept the callback, see [section 4](#4-debug-failed-webhook-deliveries)
+- Other -- read `exception`, search for the root cause in logs:
 
 ```bash
 tail -200 storage/logs/llm-*.log | grep -i error
 ```
 
-### Шаг 3. Проверить streaming pool (listen_queue)
+### Step 3. Check the streaming pool (listen_queue)
 
-См. [секцию 12](#12-streaming-pool-мониторинг). Если `listen_queue > 5` устойчиво более 2 минут -- streaming pool перегружен.
+See [section 12](#12-streaming-pool-monitoring). If `listen_queue > 5` is sustained for more than 2 minutes, the streaming pool is overloaded.
 
-### Шаг 4. Проверить upstream Anthropic
+### Step 4. Check upstream Anthropic
 
 ```bash
 curl -s -o /dev/null -w "%{http_code} %{time_total}s" \
@@ -114,14 +116,14 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s" \
   https://api.anthropic.com/v1/models
 ```
 
-- HTTP 200, time < 2s -- Anthropic в норме, проблема на нашей стороне
-- HTTP 429 -- rate limit, проверить бюджет в `claude:status`
-- HTTP 5xx -- проблема у Anthropic, перейти к шагу 6
-- Timeout -- сетевая проблема или даунтайм Anthropic
+- HTTP 200, time < 2s -- Anthropic is healthy, the issue is on our side
+- HTTP 429 -- rate limit, check the budget in `claude:status`
+- HTTP 5xx -- problem at Anthropic, proceed to step 6
+- Timeout -- network issue or Anthropic outage
 
-Также проверить: https://status.anthropic.com
+Also check: https://status.anthropic.com
 
-### Шаг 5. Проверить rate limit бюджет по клиентам
+### Step 5. Check per-client rate limit budget
 
 ```sql
 SELECT c.id, c.name, c.rate_limit_rpm, c.monthly_spend_cap_usd, c.current_month_spend_usd
@@ -131,63 +133,63 @@ ORDER BY c.current_month_spend_usd DESC
 LIMIT 10;
 ```
 
-Если `current_month_spend_usd` близок к `monthly_spend_cap_usd` -- клиент скоро будет отклонен по лимиту. Это штатное поведение.
+If `current_month_spend_usd` is close to `monthly_spend_cap_usd`, the client will soon be rejected by the cap. This is expected behaviour.
 
-Если rate limit данные в `claude:status` показывают `requests_remaining` близкий к 0 -- мы исчерпываем лимит Anthropic.
+If the rate limit data in `claude:status` shows `requests_remaining` close to 0, the Anthropic limit is being exhausted.
 
-### Шаг 6. Эскалация
+### Step 6. Escalate
 
-Если проблема не на нашей стороне и Anthropic отвечает ошибками -- см. [секцию 13](#13-эскалация-когда-писать-в-anthropic-support).
+If the issue is not on our side and Anthropic returns errors, see [section 13](#13-escalation-when-to-file-with-anthropic-support).
 
-Если проблема на нашей стороне -- эскалировать команде разработки с данными из шагов 1-5.
+If the issue is on our side, escalate to the development team with data from steps 1-5.
 
 ---
 
-## 3. Как вручную дергать claude:resume
+## 3. How to trigger claude:resume manually
 
-### Что делает
+### What it does
 
-Удаляет Redis-ключ `claude:pause:global`. После удаления запросы к Anthropic API возобновляются. Следующий healthcheck пинг произойдет в течение 1 минуты.
+Removes the Redis key `claude:pause:global`. After removal, requests to the Anthropic API resume. The next healthcheck ping will run within 1 minute.
 
-### Когда применять
+### When to use
 
-- После того как upstream Anthropic восстановился (проверено через `claude:status` или вручную через curl)
-- После ложного срабатывания circuit breaker
-- При ручном снятии глобальной паузы
+- After the upstream Anthropic recovers (verified through `claude:status` or a manual curl)
+- After a false positive on the circuit breaker
+- For a manual release of the global pause
 
-### Синтаксис
+### Syntax
 
 ```bash
 php artisan claude:resume
 ```
 
-Вывод при активной паузе:
-```
+Output when the pause is active:
+```text
 Global pause cleared. Requests will resume.
 Next healthcheck ping will run within 1 minute.
 ```
 
-Вывод если паузы не было:
-```
+Output when no pause was set:
+```text
 No pause was active.
 Next healthcheck ping will run within 1 minute.
 ```
 
-### Важно
+### Important
 
-- Команда не имеет флагов и аргументов
-- Действие мгновенное и необратимое -- если нужно снова поставить паузу, это делается установкой ключа `claude:pause:global` в Redis вручную
-- Перед снятием паузы убедитесь что Anthropic действительно работает (шаг 4 из секции 2)
+- The command takes no flags or arguments
+- The action is immediate and irreversible -- to set a pause again, write the `claude:pause:global` key in Redis manually
+- Before clearing the pause, confirm Anthropic is actually working (step 4 of section 2)
 
 ---
 
 ## 4. Debug failed webhook deliveries
 
-### Где смотреть
+### Where to look
 
-Webhook доставка логируется в таблице `async_pending`.
+Webhook delivery is recorded in the `async_pending` table.
 
-### Найти по request_id
+### Find by request_id
 
 ```sql
 SELECT
@@ -203,22 +205,22 @@ FROM async_pending ap
 WHERE ap.request_id = '<REQUEST_ID>';
 ```
 
-Статусы:
-- `queued` -- ожидает первой попытки
-- `processing` -- была неудачная попытка, ожидает следующей по backoff
-- `delivered` -- успешно доставлено
-- `exhausted` -- исчерпаны все попытки (по умолчанию 10)
+Statuses:
+- `queued` -- awaiting first attempt
+- `processing` -- previous attempt failed, awaiting next per backoff
+- `delivered` -- delivered successfully
+- `exhausted` -- all attempts consumed (default 10)
 
-### Проверить историю попыток
+### Inspect attempt history
 
-`callback_attempts` показывает сколько попыток было. `next_attempt_at` -- когда следующая.
+`callback_attempts` shows how many attempts were made. `next_attempt_at` is when the next attempt fires.
 
-Backoff: экспоненциальный, начальная задержка 10 секунд, максимум 3600 секунд.
-Формула: `min(10 * 2^(attempts-1), 3600)`.
+Backoff: exponential, initial delay 10 seconds, capped at 3600 seconds.
+Formula: `min(10 * 2^(attempts-1), 3600)`.
 
-Расписание попыток: 10s, 20s, 40s, 80s, 160s, 320s, 640s, 1280s, 2560s, 3600s.
+Attempt schedule: 10s, 20s, 40s, 80s, 160s, 320s, 640s, 1280s, 2560s, 3600s.
 
-### Проверить что запрос завершился
+### Confirm the request finished
 
 ```sql
 SELECT r.request_id, r.status, r.error_type, r.error_message, r.completed_at
@@ -226,22 +228,22 @@ FROM requests r
 WHERE r.request_id = '<REQUEST_ID>';
 ```
 
-Если `status = failed_callback_delivery` -- все попытки исчерпаны. Если `status = completed` -- запрос успешен, но webhook не доставлен (смотреть `async_pending`).
+If `status = failed_callback_delivery`, all attempts are exhausted. If `status = completed`, the request succeeded but the webhook was not delivered (inspect `async_pending`).
 
-### Лог ошибок
+### Error log
 
 ```bash
 grep '<REQUEST_ID>' storage/logs/llm-*.log
 ```
 
-При `exhausted` статусе пишется лог с уровнем `error` и деталями:
-```
+On `exhausted` status a log entry is written at `error` level with details:
+```text
 Webhook delivery exhausted {"request_id": "...", "client_id": ..., "attempts": 10}
 ```
 
-### Ручной ретриггер
+### Manual retrigger
 
-Сбросить статус и попытки, чтобы webhook был подхвачен заново:
+Reset the status and attempts so the webhook is picked up again:
 
 ```sql
 UPDATE async_pending
@@ -253,21 +255,21 @@ WHERE request_id = '<REQUEST_ID>'
   AND status = 'exhausted';
 ```
 
-Затем задиспатчить job вручную:
+Then dispatch the job manually:
 
 ```bash
 php artisan tinker --execute="App\Jobs\DeliverWebhook::dispatch('<REQUEST_ID>')->onQueue('default');"
 ```
 
-### Если клиент сменил callback URL
+### If the client changed callback URL
 
-Проверить текущие URL клиента:
+Check the client's current URLs:
 
 ```sql
 SELECT * FROM client_callback_urls WHERE client_id = <CLIENT_ID>;
 ```
 
-Если URL в `async_pending.callback_url` устарел, обновить:
+If the URL in `async_pending.callback_url` is stale, update it:
 
 ```sql
 UPDATE async_pending
@@ -279,19 +281,41 @@ SET callback_url = '<NEW_URL>',
 WHERE request_id = '<REQUEST_ID>';
 ```
 
-И задиспатчить job заново (см. выше).
+Then dispatch the job again (see above).
+
+## Investigate exhausted webhook deliveries
+
+The `async_pending` table moves failed deliveries into `status=exhausted`. Two distinct reasons exist, recorded in the `llm` log channel via the `reason` field:
+
+- `reason=permanent_fail` -- the client endpoint returned a 4xx in the permanent-fail list (`400, 401, 403, 404, 410, 413, 422`, configurable via `config('llm.webhook.permanent_fail_statuses')`). Delivery stops after **one** attempt.
+- `reason=transient_fail` -- `default_max_attempts` (10) transient failures consumed: 5xx, 408, 425, 429, network or `RequestException`.
+
+Filter recent exhaustions by reason:
+
+    grep '"Webhook delivery exhausted"' storage/logs/llm-$(date +%Y-%m-%d).log \
+      | jq 'select(.context.reason == "permanent_fail")'
+
+Count per reason over the last hour (the `llm` channel writes daily JSON-line files; there is no log table):
+
+    grep '"Webhook delivery exhausted"' storage/logs/llm-$(date +%Y-%m-%d).log \
+      | jq -r --arg since "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)" \
+          'select(.datetime >= $since) | .context.reason' \
+      | sort | uniq -c
+
+For `permanent_fail`: contact the client -- their endpoint is broken or the auth header is stale.
+For `transient_fail`: check client endpoint availability and whether responses exceed `WEBHOOK_CONNECT_TIMEOUT_SECONDS` (default 5s) or `webhook.request_timeout_seconds` (30s).
 
 ---
 
 ## 5. Debug stuck batch
 
-### Симптомы
+### Symptoms
 
-- Batch в статусе `in_progress` более 24 часов
-- `claude:poll-batches` не переводит его в завершенный статус
-- Клиент жалуется на зависший batch
+- Batch stays in `in_progress` for more than 24 hours
+- `claude:poll-batches` does not transition it to a terminal status
+- Client reports a stuck batch
 
-### Диагностика
+### Diagnostics
 
 ```sql
 SELECT
@@ -316,7 +340,7 @@ WHERE b.status = 'in_progress'
 ORDER BY b.submitted_at ASC;
 ```
 
-### Проверить статус напрямую в Anthropic
+### Check status directly with Anthropic
 
 ```bash
 curl -s \
@@ -325,12 +349,12 @@ curl -s \
   "https://api.anthropic.com/v1/messages/batches/<ANTHROPIC_BATCH_ID>" | jq .
 ```
 
-Возможные `processing_status`:
-- `in_progress` -- Anthropic все еще обрабатывает
-- `ended` -- завершен, но мы пропустили (баг в polling или cooldown)
-- 404 -- batch не найден на стороне Anthropic
+Possible `processing_status` values:
+- `in_progress` -- Anthropic is still processing
+- `ended` -- finished, but we missed it (polling bug or cooldown)
+- 404 -- batch not found on Anthropic side
 
-### Проверить элементы batch
+### Inspect batch items
 
 ```sql
 SELECT
@@ -341,23 +365,23 @@ WHERE bi.batch_id = <BATCH_ID>
 GROUP BY bi.status;
 ```
 
-### Если Anthropic вернул `ended`, а у нас все еще `in_progress`
+### Anthropic returns `ended` while we still see `in_progress`
 
-Проверить не стоит ли cooldown на polling:
+Check whether a polling cooldown is set:
 
 ```bash
 php artisan tinker --execute="echo \Illuminate\Support\Facades\Cache::get('claude:batch-poll-cooldown') ? 'cooldown active' : 'no cooldown';"
 ```
 
-Принудительно запустить poll:
+Force a poll:
 
 ```bash
 php artisan claude:poll-batches
 ```
 
-### Force close (крайняя мера)
+### Force close (last resort)
 
-Если batch завис на стороне Anthropic и не двигается более 48 часов:
+If the batch is stuck on the Anthropic side and has not moved for over 48 hours:
 
 ```sql
 UPDATE batches
@@ -368,57 +392,57 @@ WHERE batch_id = '<BATCH_ID>'
   AND status = 'in_progress';
 ```
 
-Сообщить клиенту, что batch был принудительно закрыт. Элементы в статусе `pending` нужно будет отправить заново.
+Notify the client that the batch was closed forcibly. Items still in `pending` must be resubmitted.
 
 ---
 
-## 6. Как обновлять model aliases
+## 6. How to update model aliases
 
-Подробнее: `documentation/internal_logic.md`, секция 20.
+Details: `documentation/internal_logic.md`, section 20.
 
-### Чеклист
+### Checklist
 
-1. Обновить `config/llm.php` -- секция `claude.model_aliases` и при необходимости `claude.model_capabilities`
-2. Запустить синхронизацию:
+1. Update `config/llm.php` -- section `claude.model_aliases` and, if needed, `claude.model_capabilities`
+2. Run sync:
    ```bash
    php artisan claude:sync-capabilities
    ```
-   Команда запросит live capabilities из Anthropic и покажет drift (расхождения с конфигом).
-3. Запустить тесты:
+   The command queries live capabilities from Anthropic and prints the drift (config mismatches).
+3. Run tests:
    ```bash
    php artisan test --testsuite=Unit
    php artisan test --testsuite=Feature
    ```
-4. Деплой по стандартной процедуре
-5. Мониторить 24 часа: `claude:status`, логи ошибок, rate limit бюджет
+4. Deploy via the standard procedure
+5. Monitor for 24 hours: `claude:status`, error logs, rate limit budget
 
-### Важно
+### Important
 
-- Alias (например `claude-sonnet`) остается стабильным, меняется только snapshot (например `claude-sonnet-4-6` -> `claude-sonnet-4-7`)
-- Клиенты используют alias, не snapshot -- обновление для них прозрачно
-- После обновления snapshot rate limit бюджет считается по новой модели
+- The alias (for example `claude-sonnet`) stays stable; only the snapshot changes (for example `claude-sonnet-4-6` -> `claude-sonnet-4-7`)
+- Clients use the alias, not the snapshot -- the update is transparent for them
+- After the snapshot update the rate limit budget is counted against the new model
 
 ---
 
-## 7. Как обновлять pricing
+## 7. How to update pricing
 
-Подробнее: `documentation/internal_logic.md`, секция 19.
+Details: `documentation/internal_logic.md`, section 19.
 
-### Чеклист
+### Checklist
 
-1. Обновить `config/llm.php` -- секция `claude.pricing`
-2. Проверить текущие цены:
+1. Update `config/llm.php` -- section `claude.pricing`
+2. Inspect current prices:
    ```bash
    php artisan claude:price-check
    ```
-   Выведет таблицу: alias, snapshot, input/output/cache/batch цены за 1M токенов, server tools pricing.
-3. Запустить тесты:
+   Prints the table: alias, snapshot, input/output/cache/batch prices per 1M tokens, server tools pricing.
+3. Run tests:
    ```bash
    php artisan test --testsuite=Unit
    ```
-4. Уведомить клиентов (шаблон ниже)
-5. Деплой
-6. Мониторить spend после обновления:
+4. Notify clients (template below)
+5. Deploy
+6. Monitor spend after the update:
    ```sql
    SELECT c.name, c.current_month_spend_usd, c.monthly_spend_cap_usd
    FROM clients c
@@ -426,39 +450,9 @@ WHERE batch_id = '<BATCH_ID>'
    ORDER BY c.current_month_spend_usd DESC;
    ```
 
-### Шаблон уведомления клиентов
+### Client notification template
 
-**Русская версия:**
-
-```
-Тема: Изменение тарифов LLM Gateway -- вступает в силу [ДАТА]
-
-Уважаемые коллеги,
-
-Сообщаем об изменении тарифов на использование LLM Gateway,
-вступающем в силу с [ДАТА].
-
-Затронутые модели: [СПИСОК МОДЕЛЕЙ, например: claude-sonnet, claude-opus]
-
-Старые цены (за 1M токенов):
-- Input: $[СТАРАЯ_ЦЕНА]
-- Output: $[СТАРАЯ_ЦЕНА]
-
-Новые цены (за 1M токенов):
-- Input: $[НОВАЯ_ЦЕНА]
-- Output: $[НОВАЯ_ЦЕНА]
-
-Полная таблица цен определена в `config/llm.php` -> `claude.pricing`. Проверить локально: `php artisan claude:price-check`.
-
-Если у вас настроены бюджетные лимиты (monthly_spend_cap_usd),
-рекомендуем пересмотреть их с учетом новых тарифов.
-
-По вопросам обращайтесь: [КОНТАКТ]
-```
-
-**English version:**
-
-```
+```text
 Subject: LLM Gateway pricing update -- effective [DATE]
 
 Dear team,
@@ -486,14 +480,14 @@ Questions: [CONTACT]
 
 ---
 
-## 8. Как обновлять beta headers
+## 8. How to update beta headers
 
-Подробнее: `documentation/internal_logic.md`, секция 18.
+Details: `documentation/internal_logic.md`, section 18.
 
-### Чеклист
+### Checklist
 
-1. Обновить `config/llm.php` -- секция `claude.beta_headers`
-   Текущие headers:
+1. Update `config/llm.php` -- section `claude.beta_headers`
+   Current headers:
    - `files_api` -- `files-api-2025-04-14`
    - `compaction` -- `compact-2026-01-12`
    - `context_management` -- `context-management-2025-06-27`
@@ -503,42 +497,42 @@ Questions: [CONTACT]
    - `computer_use` -- `computer-use-2025-01-24`
    - `skills` -- `skills-2025-10-02`
 
-2. Запустить тесты:
+2. Run tests:
    ```bash
    php artisan test --testsuite=Unit
    ```
 
-3. Деплой
+3. Deploy
 
-4. Проверить что запросы проходят:
+4. Verify requests pass through:
    ```bash
    php artisan claude:status
    ```
-   Если статус OK -- headers корректны. Если DEGRADED/DOWN с ошибкой `invalid_request_error` -- header невалиден, откатить.
+   If status is OK, headers are correct. If DEGRADED/DOWN with `invalid_request_error`, the header is invalid -- roll back.
 
-### Важно
+### Important
 
-- Anthropic периодически переводит beta features в GA и удаляет header. Устаревший header вызовет ошибку.
-- При удалении header из конфига убедитесь, что feature доступна без него (проверить в Anthropic changelog).
-- Порядок headers не имеет значения, они конкатенируются через запятую.
+- Anthropic periodically promotes beta features to GA and removes the header. A stale header triggers an error.
+- When dropping a header from config, confirm the feature is available without it (consult the Anthropic changelog).
+- Header order does not matter; they are concatenated with commas.
 
 ---
 
-## 9. Как чистить orphaned files
+## 9. How to clean up orphaned files
 
-### Автоматическая очистка
+### Automatic cleanup
 
 ```bash
 php artisan claude:cleanup-files
 ```
 
-Команда выполняет два прохода:
-1. **Hard-delete pass** -- удаляет записи из таблицы `files`, у которых `is_deleted = 1` и прошло более `hard_delete_grace_days` (по умолчанию 14 дней) с момента soft delete
-2. **Unused alert pass** -- обнаруживает файлы, не используемые более `unused_alert_days` (по умолчанию 90 дней) и логирует предупреждение
+The command runs two passes:
+1. **Hard-delete pass** -- removes rows from the `files` table where `is_deleted = 1` and more than `hard_delete_grace_days` (default 14 days) have passed since soft delete
+2. **Unused alert pass** -- detects files unused for more than `unused_alert_days` (default 90 days) and logs a warning
 
-### Ручная очистка SQL
+### Manual SQL cleanup
 
-Найти orphaned файлы (soft-deleted, старше grace period):
+Find orphaned files (soft-deleted, older than the grace period):
 
 ```sql
 SELECT f.id, f.file_id, f.anthropic_file_id, f.filename, f.size_bytes, f.deleted_at
@@ -548,15 +542,15 @@ WHERE f.deleted_at IS NOT NULL
 ORDER BY f.size_bytes DESC;
 ```
 
-Удалить конкретный файл:
+Delete a specific file:
 
 ```sql
 DELETE FROM files WHERE file_id = '<FILE_ID>';
 ```
 
-### Пересчет storage quota
+### Recompute storage quota
 
-После массовой очистки проверить суммарный размер файлов по клиенту:
+After bulk cleanup, check the total file size per client:
 
 ```sql
 SELECT
@@ -574,9 +568,9 @@ ORDER BY total_bytes DESC;
 
 ---
 
-## 10. Как извлекать данные о клиенте по request_id
+## 10. How to extract client data by request_id
 
-### Основная информация о запросе
+### Core request information
 
 ```sql
 SELECT
@@ -601,7 +595,7 @@ JOIN clients c ON r.client_id = c.id
 WHERE r.request_id = '<REQUEST_ID>';
 ```
 
-### Исходный payload и ответ
+### Source payload and response
 
 ```sql
 SELECT
@@ -613,7 +607,7 @@ FROM request_raw rr
 WHERE rr.request_id = '<REQUEST_ID>';
 ```
 
-Retention: `request_raw` хранится `raw_log_retention_days` дней (по умолчанию 14). После этого срока данные удаляются `requests:cleanup`.
+Retention: `request_raw` is kept for `raw_log_retention_days` days (default 14). After that period the data is purged by `requests:cleanup`.
 
 ### Cost breakdown
 
@@ -634,7 +628,7 @@ FROM request_usage ru
 WHERE ru.request_id = '<REQUEST_ID>';
 ```
 
-`cost_breakdown` -- JSON с детализацией: input, output, cache_write_5m, cache_write_1h, cache_read, server tools.
+`cost_breakdown` is a JSON document with per-component detail: input, output, cache_write_5m, cache_write_1h, cache_read, server tools.
 
 ### Webhook delivery log
 
@@ -652,24 +646,43 @@ WHERE ap.request_id = '<REQUEST_ID>';
 
 ### PII
 
-Таблица `request_raw` содержит полные payload запросов и ответов, включая пользовательский контент. При предоставлении данных третьим лицам или при запросе клиента на удаление:
+The `request_raw` table stores full request and response payloads, including user content. When sharing data with third parties or honouring a client deletion request:
 
-- Убедитесь что запрос авторизован
-- Не копируйте `request_payload`/`response_payload` в незащищенные каналы
-- При необходимости удалить:
+- Confirm the request is authorised
+- Do not copy `request_payload`/`response_payload` into unsecured channels
+- To delete:
   ```sql
   DELETE FROM request_raw WHERE request_id = '<REQUEST_ID>';
   ```
+
+## Adjust client rate limit
+
+1. Find the client:
+
+   ```sql
+   SELECT id, name, rate_limit_rpm FROM clients WHERE name = '<client-name>';
+   ```
+
+2. Update the limit:
+
+   ```sql
+   UPDATE clients SET rate_limit_rpm = <N> WHERE id = <id>;
+   ```
+
+3. No cache to invalidate -- the rate limiter reads `rate_limit_rpm` on every request through `App\Providers\AppServiceProvider::boot()` -> `RateLimiter::for('api-client', ...)`.
+4. Verify by sending a burst of test requests with the client's API key. Expect HTTP 429 after `N` requests inside one minute, with `Retry-After` and `X-RateLimit-*` headers in the response.
+
+Setting `rate_limit_rpm = NULL` falls back to `config('llm.rate_limit.default_per_minute')` (default 600/min, env `GATEWAY_DEFAULT_RATE_LIMIT_PER_MINUTE`).
 
 ---
 
 ## 11. Drop legacy tables safeguard
 
-**КРИТИЧНО.** Одноразовая операция удаления устаревших таблиц из предыдущей версии схемы.
+**CRITICAL.** One-time operation that drops obsolete tables from the previous schema version.
 
-### Какие таблицы удаляются
+### Tables removed
 
-Миграция `2026_05_01_000001_drop_legacy_tables` удаляет:
+The migration `2026_05_01_000001_drop_legacy_tables` drops:
 - `session_history`
 - `pending_responses`
 - `pending_prompts`
@@ -680,128 +693,135 @@ WHERE ap.request_id = '<REQUEST_ID>';
 - `api_clients`
 - `jobs`
 
-### Защитный механизм
+### Safeguard mechanism
 
-Миграция защищена переменной окружения. Без нее `php artisan migrate` выбросит `RuntimeException` и остановится.
+The migration is gated by an environment variable. Without it, `php artisan migrate` throws `RuntimeException` and stops.
 
-### Пошаговая инструкция
+### Step-by-step procedure
 
-**Шаг 1.** Установить переменную окружения:
+**Step 1.** Set the environment variable:
 
 ```bash
 export CLAUDE_ALLOW_LEGACY_DROP=yes-i-confirm-data-loss-2026-05
 ```
 
-Или добавить в `.env`:
-```
+Or add it to `.env`:
+```text
 CLAUDE_ALLOW_LEGACY_DROP=yes-i-confirm-data-loss-2026-05
 ```
 
-Значение должно быть **точно** `yes-i-confirm-data-loss-2026-05`. Любое другое значение не пройдет проверку.
+The value must be **exactly** `yes-i-confirm-data-loss-2026-05`. Any other value fails the check.
 
-**Шаг 2.** Запустить миграцию:
+**Step 2.** Run the migration:
 
 ```bash
 php artisan migrate --force
 ```
 
-`--force` обязателен в production.
+`--force` is required in production.
 
-**Шаг 3.** Удалить переменную окружения:
+**Step 3.** Remove the environment variable:
 
 ```bash
 unset CLAUDE_ALLOW_LEGACY_DROP
 ```
 
-Или удалить строку из `.env`. Переменная не должна оставаться в окружении после миграции.
+Or delete the line from `.env`. The variable must not remain in the environment after the migration.
 
-**Шаг 4.** Верифицировать:
+**Step 4.** Verify:
 
 ```sql
 SHOW TABLES;
 ```
 
-Убедиться что таблицы `api_clients`, `callback_urls`, `request_log`, `response_log`, `raw_responses`, `pending_prompts`, `pending_responses`, `session_history`, `jobs` отсутствуют.
+Confirm that tables `api_clients`, `callback_urls`, `request_log`, `response_log`, `raw_responses`, `pending_prompts`, `pending_responses`, `session_history`, `jobs` are absent.
 
-### Важно
+### Important
 
-- Это одноразовая операция. После выполнения миграция помечается как выполненная в `migrations` и больше не запускается.
-- Откат (`migrate:rollback`) невозможен -- миграция `down()` бросает RuntimeException. Восстановление только из бекапа.
-- Защитный механизм реализован через env-переменную намеренно: это единственный способ убедиться, что оператор осознанно подтвердил удаление данных.
-- Перед выполнением убедитесь что бекап базы данных создан.
+- This is a one-time operation. Once executed, the migration is marked as run in `migrations` and will not fire again.
+- Rollback (`migrate:rollback`) is not possible -- the migration's `down()` throws RuntimeException. Recovery is only from backup.
+- The safeguard is implemented via env variable on purpose: it is the only way to guarantee the operator deliberately confirmed data loss.
+- Confirm the database backup exists before running it.
 
 ---
 
-## 12. Streaming pool мониторинг
+## 12. Streaming pool monitoring
 
-### Как устроен streaming
+### How streaming works
 
-Streaming-запросы обрабатываются php-fpm процессами напрямую (не через очереди). Каждый streaming-запрос занимает один php-fpm worker на все время стриминга (timeout до 1800 секунд).
+Streaming requests are served by php-fpm processes directly (not via queues). Each streaming request occupies one php-fpm worker for the entire duration of the stream (timeout up to 1800 seconds).
 
-### Как проверить listen_queue
+### How to check listen_queue
 
 ```bash
 docker exec llm-gateway-php-fpm bash -c "SCRIPT_NAME=/fpm-status SCRIPT_FILENAME=/fpm-status REQUEST_METHOD=GET cgi-fcgi -bind -connect /var/run/php-fpm.sock"
 ```
 
-Или через nginx (если настроен endpoint):
+Or via nginx (if the endpoint is exposed):
 ```bash
 curl -s http://localhost:8080/fpm-status
 ```
 
-Ключевые метрики:
-- **listen queue** -- количество запросов, ожидающих свободного worker
-- **active processes** -- количество занятых workers
-- **idle processes** -- количество свободных workers
-- **max active processes** -- пиковое значение за время работы
+Key metrics:
+- **listen queue** -- number of requests waiting for a free worker
+- **active processes** -- number of busy workers
+- **idle processes** -- number of free workers
+- **max active processes** -- peak value since startup
 
-### Триггеры алертов
+### Alert triggers
 
-| Условие | Уровень | Действие |
-|---------|---------|----------|
-| `listen_queue > 5` устойчиво 2 минуты | WARNING | Проверить количество streaming-запросов |
-| `listen_queue > 10` устойчиво 1 минуту | CRITICAL | Масштабировать pool |
-| `idle processes = 0` при `listen_queue > 0` | CRITICAL | Все workers заняты, новые запросы блокируются |
+| Condition | Level | Action |
+|-----------|-------|--------|
+| `listen_queue > 5` sustained for 2 minutes | WARNING | Check the streaming request volume |
+| `listen_queue > 10` sustained for 1 minute | CRITICAL | Scale the pool |
+| `idle processes = 0` while `listen_queue > 0` | CRITICAL | All workers busy, new requests blocked |
 
-### Как масштабировать
+### How to scale
 
-Увеличить `pm.max_children` в конфигурации php-fpm:
+Increase `pm.max_children` in the php-fpm configuration:
 
-1. Отредактировать `docker/php-fpm/www.conf` (или аналогичный файл конфигурации):
+1. Edit `docker/php-fpm/www.conf` (or the equivalent config file):
    ```ini
-   pm.max_children = <НОВОЕ_ЗНАЧЕНИЕ>
+   pm.max_children = <NEW_VALUE>
    ```
 
-2. Перезапустить php-fpm контейнер:
+2. Restart the php-fpm container:
    ```bash
    docker compose restart php-fpm
    ```
 
-### Факторы риска
+### Risk factors
 
-- Каждый streaming worker держит соединение до 1800 секунд (30 минут) -- `config/llm.php` -> `claude.timeouts.streaming`
-- При 20 workers и среднем стриме 60 секунд -- пропускная способность ~20 rps streaming
-- При всплеске длинных стримов (thinking с extended output) workers исчерпываются быстрее
-- Увеличение `pm.max_children` требует пропорционального увеличения RAM (каждый worker ~50-100MB)
-- Мониторьте connection_aborted -- если клиент отключается, worker все равно дочитывает ответ от Anthropic для корректного биллинга
+- Each streaming worker holds a connection for up to 1800 seconds (30 minutes) -- `config/llm.php` -> `claude.timeouts.streaming`
+- With 20 workers and a 60-second average stream the throughput is ~20 rps streaming
+- Spikes of long streams (thinking with extended output) drain workers faster
+- Raising `pm.max_children` requires proportional RAM growth (each worker ~50-100MB)
+- Watch `connection_aborted` -- if the client disconnects, the worker still drains the response from Anthropic for accurate billing
+
+### Webhook exhaustion metrics
+
+Track permanent-fail vs transient-fail rates separately -- they reflect different failure modes:
+
+- A spike in `reason=permanent_fail` indicates a broken client endpoint (auth rotation, deployment that changed the URL, payload validation rejecting the envelope). It is not the gateway's problem to retry.
+- A spike in `reason=transient_fail` indicates either client-endpoint instability or upstream network issues. Both surface as exhausted rows after 10 attempts (~90 minutes total backoff).
 
 ---
 
-## 13. Эскалация: когда писать в Anthropic support
+## 13. Escalation: when to file with Anthropic support
 
-### Симптомы для эскалации
+### Symptoms that warrant escalation
 
-| Симптом | Порог | Откуда данные |
-|---------|-------|---------------|
-| HTTP 5xx от Anthropic | > 1% от всех запросов устойчиво > 5 минут | `requests.http_status`, логи |
-| HTTP 429 на все запросы | Все модели, все клиенты одновременно | `claude:status` rate limit snapshot |
-| Latency spike | > 3x от baseline (baseline ~2-5s для sonnet) | `claude:status` latency, `requests.started_at`/`completed_at` |
-| Batch не завершается | > 48 часов в статусе `in_progress` | `batches.submitted_at` |
-| Files API ошибки | Стабильные 4xx/5xx при загрузке файлов | Логи |
+| Symptom | Threshold | Source |
+|---------|-----------|--------|
+| HTTP 5xx from Anthropic | > 1% of all requests sustained > 5 minutes | `requests.http_status`, logs |
+| HTTP 429 on every request | All models, all clients simultaneously | `claude:status` rate limit snapshot |
+| Latency spike | > 3x baseline (baseline ~2-5s for sonnet) | `claude:status` latency, `requests.started_at`/`completed_at` |
+| Batch never completes | > 48 hours in `in_progress` | `batches.submitted_at` |
+| Files API errors | Steady 4xx/5xx on file uploads | Logs |
 
-### Что включить в тикет
+### What to include in the ticket
 
-1. **Request IDs** -- наши `request_id` и `anthropic_request_id` из таблицы `requests`:
+1. **Request IDs** -- our `request_id` and `anthropic_request_id` from the `requests` table:
    ```sql
    SELECT request_id, anthropic_request_id, http_status, error_type, error_message, created_at
    FROM requests
@@ -811,9 +831,9 @@ curl -s http://localhost:8080/fpm-status
    LIMIT 20;
    ```
 
-2. **Timestamps** -- точный интервал проблемы в UTC
+2. **Timestamps** -- exact UTC interval of the issue
 
-3. **Repro payload** -- минимальный запрос, воспроизводящий проблему (из `request_raw.request_payload`):
+3. **Repro payload** -- minimal request that reproduces the issue (from `request_raw.request_payload`):
    ```sql
    SELECT rr.request_payload
    FROM request_raw rr
@@ -822,16 +842,35 @@ curl -s http://localhost:8080/fpm-status
      AND r.created_at > NOW() - INTERVAL 1 HOUR
    LIMIT 1;
    ```
-   Убрать из payload чувствительные данные клиента перед отправкой.
+   Strip sensitive client data from the payload before sending.
 
-4. **Error response** -- тело ответа от Anthropic (из `request_raw.response_payload`)
+4. **Error response** -- response body from Anthropic (from `request_raw.response_payload`)
 
-5. **Частота** -- процент ошибок и количество затронутых запросов
+5. **Frequency** -- error percentage and number of affected requests
 
-6. **Organization ID** -- из `requests.anthropic_organization_id`
+6. **Organization ID** -- from `requests.anthropic_organization_id`
 
-### Контакты Anthropic
+### Anthropic contacts
 
 - Support portal: https://support.anthropic.com
 - API status page: https://status.anthropic.com
-- Для критических инцидентов (полный даунтайм): указать `Severity: Critical` в тикете
+- For critical incidents (full outage): set `Severity: Critical` on the ticket
+
+---
+
+## Migrations
+
+### `2026_04_25_091207_reorder_async_pending_indexes`
+
+Drops the previous composite index `[status, next_attempt_at]` and creates `async_pending_next_attempt_status_idx (next_attempt_at, status)`. The leading column matters: the scheduler `RetryFailedWebhooks` filters by `next_attempt_at <= NOW()` first, then by `status`.
+
+**Production rollout (MySQL 8.4, InnoDB):**
+
+    ALTER TABLE async_pending
+      DROP INDEX async_pending_status_next_attempt_at_index,
+      ADD INDEX async_pending_next_attempt_status_idx (next_attempt_at, status),
+      ALGORITHM=INPLACE, LOCK=NONE;
+
+`ALGORITHM=INPLACE, LOCK=NONE` avoids downtime on large tables. Laravel's migration wrapper does not emit these clauses -- for a production DB with >10M rows, run the raw SQL manually before invoking `php artisan migrate` (then mark the migration as run via `INSERT INTO migrations`).
+
+For dev, test or small prod (<1M rows), `php artisan migrate` is sufficient.

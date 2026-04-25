@@ -1,9 +1,9 @@
-# LLM Gateway v4 -- Руководство по интеграции
+# LLM Gateway v4 -- Integration Guide
 
-- **Версия протокола:** 4.0
-- **Формат:** JSON (Anthropic Messages API)
-- **Провайдер:** Claude (Anthropic)
-- **Дата актуализации:** 2026-04-25
+- **Protocol version:** 4.0
+- **Format:** JSON (Anthropic Messages API)
+- **Provider:** Claude (Anthropic)
+- **Last updated:** 2026-04-25
 
 ---
 
@@ -123,13 +123,17 @@ On failure, `event` is `message.failed`, `anthropic_response` is absent (or `nul
 - Anthropic: the client sets `anthropic-beta: ...` manually and opts each call in to beta features.
 - Gateway: `FeatureDetector` inspects the payload and sets the right `anthropic-beta` combination automatically (prompt caching, extended thinking, skills, MCP, server tools, files). Clients pass a plain Anthropic payload — the gateway attaches the beta headers.
 
+### 11. Per-client rate limiting
+
+The gateway enforces a per-client request budget in addition to Anthropic's workspace-level limits. See [Rate limiting](#rate-limiting). 429 responses use Anthropic's standard `rate_limit_error` shape with `Retry-After` and `X-RateLimit-*` headers.
+
 ---
 
-## 1. Quickstart (за 5 минут)
+## 1. Quickstart (in 5 minutes)
 
-Два способа начать работу: через Anthropic SDK (рекомендуется) или напрямую через HTTP.
+Two ways to get started: through the Anthropic SDK (recommended) or directly over HTTP.
 
-### Вариант A: Anthropic Python SDK (рекомендуется)
+### Option A: Anthropic Python SDK (recommended)
 
 ```bash
 pip install anthropic
@@ -139,7 +143,7 @@ pip install anthropic
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -147,29 +151,29 @@ message = client.messages.create(
     model="claude-sonnet",
     max_tokens=1024,
     messages=[
-        {"role": "user", "content": "Объясни теорему Байеса простым языком."}
+        {"role": "user", "content": "Explain Bayes' theorem in plain language."}
     ],
 )
 
 print(message.content[0].text)
 ```
 
-### Вариант B: curl
+### Option B: curl
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 1024,
     "messages": [
-      {"role": "user", "content": "Объясни теорему Байеса простым языком."}
+      {"role": "user", "content": "Explain Bayes theorem in plain language."}
     ]
   }'
 ```
 
-Ответ:
+Response:
 
 ```json
 {
@@ -180,7 +184,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
   "content": [
     {
       "type": "text",
-      "text": "Теорема Байеса позволяет обновить вероятность гипотезы..."
+      "text": "Bayes' theorem updates the probability of a hypothesis..."
     }
   ],
   "stop_reason": "end_turn",
@@ -193,13 +197,13 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 }
 ```
 
-Заголовки ответа содержат метаданные gateway (см. раздел 4).
+Response headers carry gateway metadata (see section 4).
 
 ---
 
-## 2. Использование Anthropic SDK с нашим gateway
+## 2. Using the Anthropic SDK with this gateway
 
-Gateway принимает запросы в формате Anthropic Messages API, поэтому официальные SDK работают напрямую -- достаточно заменить `base_url`.
+The gateway accepts requests in the Anthropic Messages API format, so the official SDKs work directly — replace `base_url` and you are done.
 
 ### Python
 
@@ -207,17 +211,17 @@ Gateway принимает запросы в формате Anthropic Messages A
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
-# Синхронный запрос
+# Synchronous request
 message = client.messages.create(
     model="claude-sonnet",
     max_tokens=2048,
-    system="Ты полезный ассистент.",
+    system="You are a helpful assistant.",
     messages=[
-        {"role": "user", "content": "Что такое REST API?"}
+        {"role": "user", "content": "What is a REST API?"}
     ],
 )
 
@@ -225,7 +229,7 @@ message = client.messages.create(
 with client.messages.stream(
     model="claude-sonnet",
     max_tokens=2048,
-    messages=[{"role": "user", "content": "Напиши короткий рассказ."}],
+    messages=[{"role": "user", "content": "Write a short story."}],
 ) as stream:
     for text in stream.text_stream:
         print(text, end="", flush=True)
@@ -233,7 +237,7 @@ with client.messages.stream(
 # Token counting
 result = client.messages.count_tokens(
     model="claude-sonnet",
-    messages=[{"role": "user", "content": "Привет!"}],
+    messages=[{"role": "user", "content": "Hello!"}],
 )
 print(result.input_tokens)
 
@@ -245,7 +249,7 @@ batch = client.messages.batches.create(
             "params": {
                 "model": "claude-sonnet",
                 "max_tokens": 1024,
-                "messages": [{"role": "user", "content": "Привет!"}],
+                "messages": [{"role": "user", "content": "Hello!"}],
             },
         }
     ]
@@ -258,22 +262,22 @@ batch = client.messages.batches.create(
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  apiKey: "gw_live_ваш_ключ",
+  apiKey: "gw_live_your_key",
   baseURL: "https://gateway.example.com/api/v1",
 });
 
 const message = await client.messages.create({
   model: "claude-sonnet",
   max_tokens: 1024,
-  messages: [{ role: "user", content: "Что такое TypeScript?" }],
+  messages: [{ role: "user", content: "What is TypeScript?" }],
 });
 
 console.log(message.content[0].text);
 ```
 
-### Работающие методы SDK
+### Supported SDK methods
 
-| Метод SDK | Endpoint gateway |
+| SDK method | Gateway endpoint |
 |-----------|-----------------|
 | `messages.create()` | `POST /api/v1/messages` |
 | `messages.stream()` | `POST /api/v1/messages` (stream: true) |
@@ -291,108 +295,108 @@ console.log(message.content[0].text);
 | `models.list()` | `GET /api/v1/models` |
 | `models.retrieve()` | `GET /api/v1/models/{alias}` |
 
-### Ключевые отличия от прямого Anthropic API
+### Key differences from the direct Anthropic API
 
-**Формат ключа.** Gateway использует ключи формата `gw_live_*` вместо `sk-ant-*`. Ключ передается в заголовке `Authorization: Bearer gw_live_...` точно так же, как и обычный Anthropic-ключ.
+**Key format.** The gateway uses `gw_live_*` keys instead of `sk-ant-*`. The key travels in the `Authorization: Bearer gw_live_...` header exactly like a regular Anthropic key.
 
-**Модели -- только алиасы.** В поле `model` принимаются исключительно алиасы: `claude-opus`, `claude-sonnet`, `claude-haiku`. Передача snapshot-имени (например, `claude-sonnet-4-6`) приведет к ошибке 400. Gateway сам разрешает алиас в актуальный snapshot.
+**Models — aliases only.** The `model` field accepts only aliases: `claude-opus`, `claude-sonnet`, `claude-haiku`. Passing a snapshot name (for example `claude-sonnet-4-6`) returns a 400 error. The gateway resolves the alias to the active snapshot.
 
-**Дополнительные заголовки ответа.** Каждый ответ содержит заголовки `X-Gateway-*` с метаданными: стоимость, request ID, информация о модели и кэше (см. раздел 4). SDK их игнорирует, но они доступны через объект raw response.
+**Extra response headers.** Every response carries `X-Gateway-*` headers with metadata: cost, request id, model and cache info (see section 4). The SDK ignores them but they are accessible through the raw response object.
 
-**Эндпоинты, недоступные через SDK.** Следующие возможности gateway не имеют аналогов в Anthropic API и требуют прямых HTTP-запросов:
+**Endpoints not exposed by the SDK.** The following gateway capabilities have no Anthropic API counterpart and require direct HTTP calls:
 
-- `POST /api/v1/messages/async` -- асинхронная обработка с webhook
-- `POST /api/v1/messages/batch` -- batch-аккумулятор
-- `POST /api/v1/sessions` и все `/sessions/*` -- серверные сессии
-- `POST /api/v1/skills` и все `/skills/*` -- навыки (skills)
-- `GET /api/v1/clients/me/usage` -- отчет по расходам
-- `GET /api/v1/messages/{requestId}` -- получение результата async-запроса
+- `POST /api/v1/messages/async` — async processing with webhook
+- `POST /api/v1/messages/batch` — batch accumulator
+- `POST /api/v1/sessions` and all `/sessions/*` — server-side sessions
+- `POST /api/v1/skills` and all `/skills/*` — skills
+- `GET /api/v1/clients/me/usage` — spend report
+- `GET /api/v1/messages/{requestId}` — fetch async-request result
 
 ---
 
-## 3. Аутентификация
+## 3. Authentication
 
-### Формат ключа
+### Key format
 
-API-ключи gateway имеют формат `gw_live_` + 32 символа (base62):
+Gateway API keys have the format `gw_live_` + 32 base62 characters:
 
-```
+```text
 gw_live_a7Bk3mNpQrSt9uVwXyZ1c2D4e5F6g7H8
 ```
 
-### Передача ключа
+### Sending the key
 
-Ключ передается в заголовке `Authorization`:
+Pass the key in the `Authorization` header:
 
-```
+```http
 Authorization: Bearer gw_live_a7Bk3mNpQrSt9uVwXyZ1c2D4e5F6g7H8
 ```
 
-Все эндпоинты `/api/v1/*` требуют аутентификации.
+All `/api/v1/*` endpoints require authentication.
 
-### Получение ключа
+### Obtaining a key
 
-Ключ создается администратором:
+The administrator creates the key:
 
 ```bash
 docker exec llm_gateway php artisan client:create my_service --rate-limit=120
 ```
 
-При создании выводятся **API Key** и **Signing Secret** (для верификации webhook-подписей). Оба значения отображаются один раз -- сохраните их немедленно.
+The command prints the **API Key** and **Signing Secret** (used to verify webhook signatures). Both values appear once — store them immediately.
 
-### Ротация ключей
+### Key rotation
 
 ```bash
 docker exec llm_gateway php artisan client:rotate-key <client_id>
 ```
 
-Ротация API-ключа атомарна: старый ключ сразу перестаёт работать, в консоль выводится новый. Для signing secret предусмотрен grace period:
+API key rotation is atomic: the old key stops working immediately and the new one prints to the console. The signing secret rotation supports a grace period:
 
 ```bash
 docker exec llm_gateway php artisan client:rotate-secret <client_id>
 ```
 
-После ротации signing secret старое значение продолжает приниматься в течение `webhook.grace_period_seconds` (по умолчанию 86400 секунд = 24 часа).
+After signing secret rotation, the old value remains accepted for `webhook.grace_period_seconds` (default 86400 seconds = 24 hours).
 
-### Рекомендации по безопасности
+### Security recommendations
 
-- Храните ключ в переменных окружения, не в коде.
-- Не передавайте ключ в URL-параметрах.
-- Используйте разные ключи для разных окружений (staging, production).
-- Регулярно выполняйте ротацию ключей.
-- При компрометации ключа -- немедленная ротация с минимальным TTL.
+- Store the key in environment variables, not in source code.
+- Do not pass the key in URL parameters.
+- Use separate keys per environment (staging, production).
+- Rotate keys regularly.
+- On compromise — rotate immediately with minimal TTL.
 
 ---
 
-## 4. Базовый запрос POST /api/v1/messages
+## 4. Basic request POST /api/v1/messages
 
-Gateway работает как **pure pass-through** к Anthropic Messages API. Тело запроса -- это **bare Anthropic Message object**, передаваемое без обертки и модификаций. Gateway транслирует его напрямую в Anthropic API, добавляя только служебные заголовки.
+The gateway works as a **pure pass-through** to the Anthropic Messages API. The request body is a **bare Anthropic Message object** sent without any wrapper or modification. The gateway forwards it directly to the Anthropic API and only attaches service headers.
 
-### Запрос
+### Request
 
-```
+```http
 POST /api/v1/messages
 Content-Type: application/json
-Authorization: Bearer gw_live_ваш_ключ
+Authorization: Bearer gw_live_your_key
 ```
 
 ```json
 {
   "model": "claude-sonnet",
   "max_tokens": 1024,
-  "system": "Ты эксперт по Python.",
+  "system": "You are a Python expert.",
   "messages": [
     {
       "role": "user",
-      "content": "Как работает GIL в Python?"
+      "content": "How does the GIL work in Python?"
     }
   ]
 }
 ```
 
-### Ответ (200 OK)
+### Response (200 OK)
 
-Тело ответа -- стандартный Anthropic Message object:
+The body is a standard Anthropic Message object:
 
 ```json
 {
@@ -403,7 +407,7 @@ Authorization: Bearer gw_live_ваш_ключ
   "content": [
     {
       "type": "text",
-      "text": "GIL (Global Interpreter Lock) -- это механизм CPython..."
+      "text": "The GIL (Global Interpreter Lock) is a CPython mechanism..."
     }
   ],
   "stop_reason": "end_turn",
@@ -416,23 +420,23 @@ Authorization: Bearer gw_live_ваш_ключ
 }
 ```
 
-### Заголовки ответа X-Gateway-*
+### X-Gateway-* response headers
 
-Каждый ответ содержит метаданные gateway:
+Every response carries gateway metadata:
 
-| Заголовок | Описание | Пример |
+| Header | Description | Example |
 |-----------|----------|--------|
-| `X-Gateway-Request-Id` | Уникальный ID запроса в gateway | `req_abc123def456ghi789jkl012` |
-| `X-Gateway-Anthropic-Request-Id` | ID запроса в Anthropic API | `req_01A2B3C4D5E6F7G8H9` |
-| `X-Gateway-Model-Alias` | Алиас модели, указанный в запросе | `claude-sonnet` |
-| `X-Gateway-Model-Snapshot` | Фактический snapshot модели | `claude-sonnet-4-6` |
-| `X-Gateway-Cost-USD` | Стоимость запроса в USD | `0.004215` |
-| `X-Gateway-Cost-Breakdown` | Детализация стоимости (base64 JSON) | `eyJpbnB1dCI6MC4w...` |
-| `X-Gateway-Spend-Remaining-USD` | Остаток бюджета клиента | `95.780000` или `unlimited` |
-| `X-Gateway-Service-Tier-Used` | Использованный service tier | `standard` |
-| `X-Gateway-Cache-Hit-Tokens` | Количество токенов из кэша | `1500` |
+| `X-Gateway-Request-Id` | Unique gateway request id | `req_abc123def456ghi789jkl012` |
+| `X-Gateway-Anthropic-Request-Id` | Anthropic API request id | `req_01A2B3C4D5E6F7G8H9` |
+| `X-Gateway-Model-Alias` | Model alias from the request | `claude-sonnet` |
+| `X-Gateway-Model-Snapshot` | Resolved model snapshot | `claude-sonnet-4-6` |
+| `X-Gateway-Cost-USD` | Request cost in USD | `0.004215` |
+| `X-Gateway-Cost-Breakdown` | Cost breakdown (base64 JSON) | `eyJpbnB1dCI6MC4w...` |
+| `X-Gateway-Spend-Remaining-USD` | Client budget remaining | `95.780000` or `unlimited` |
+| `X-Gateway-Service-Tier-Used` | Applied service tier | `standard` |
+| `X-Gateway-Cache-Hit-Tokens` | Tokens served from cache | `1500` |
 
-Заголовок `X-Gateway-Cost-Breakdown` содержит base64-кодированный JSON с детализацией:
+The `X-Gateway-Cost-Breakdown` header contains base64-encoded JSON with the cost split:
 
 ```json
 {
@@ -447,9 +451,9 @@ Authorization: Bearer gw_live_ваш_ключ
 
 ## 5. Streaming
 
-Для streaming-ответов передайте `"stream": true` в теле запроса. Gateway выполняет **pure pass-through** потока SSE (Server-Sent Events) от Anthropic.
+For streaming responses, set `"stream": true` in the request body. The gateway is a **pure pass-through** of the Anthropic SSE (Server-Sent Events) stream.
 
-### Запрос
+### Request
 
 ```json
 {
@@ -457,16 +461,16 @@ Authorization: Bearer gw_live_ваш_ключ
   "max_tokens": 2048,
   "stream": true,
   "messages": [
-    {"role": "user", "content": "Напиши стихотворение о программировании."}
+    {"role": "user", "content": "Write a poem about programming."}
   ]
 }
 ```
 
-### Формат ответа
+### Response format
 
-HTTP-ответ имеет Content-Type `text/event-stream`. Поток состоит из SSE-событий:
+The HTTP response has Content-Type `text/event-stream`. The stream consists of SSE events:
 
-```
+```text
 event: message_start
 data: {"type":"message_start","message":{"id":"msg_01...","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"stop_reason":null,"usage":{"input_tokens":15,"output_tokens":0}}}
 
@@ -474,10 +478,10 @@ event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"В мире"}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"In a world"}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" нулей и единиц"}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" of zeros and ones"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":0}
@@ -489,46 +493,46 @@ event: message_stop
 data: {"type":"message_stop"}
 ```
 
-### Типы SSE-событий
+### SSE event types
 
-| Событие | Описание |
+| Event | Description |
 |---------|----------|
-| `message_start` | Начало сообщения, содержит metadata и usage входных токенов |
-| `content_block_start` | Начало блока контента (text, tool_use, thinking) |
-| `content_block_delta` | Инкрементальный фрагмент контента |
-| `content_block_stop` | Завершение блока контента |
-| `message_delta` | Финальные metadata (stop_reason, output usage) |
-| `message_stop` | Конец потока |
+| `message_start` | Start of message; carries metadata and input-token usage |
+| `content_block_start` | Start of a content block (text, tool_use, thinking) |
+| `content_block_delta` | Incremental content fragment |
+| `content_block_stop` | End of a content block |
+| `message_delta` | Final metadata (stop_reason, output usage) |
+| `message_stop` | End of stream |
 | `ping` | Keep-alive |
-| `error` | Ошибка в процессе генерации |
+| `error` | Error during generation |
 
-### Ошибка после HTTP 200
+### Errors after HTTP 200
 
-При streaming HTTP-статус 200 отправляется до начала генерации. Если ошибка возникает в процессе, она приходит как SSE-событие `error`:
+In streaming, HTTP status 200 is sent before generation begins. If an error happens mid-stream, it arrives as an SSE `error` event:
 
-```
+```text
 event: error
 data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
 ```
 
-Клиент должен обрабатывать такие ошибки. SDK делает это автоматически, выбрасывая соответствующее исключение.
+The client must handle these errors. SDKs do this automatically by raising the matching exception.
 
-### Заголовки streaming-ответа
+### Streaming response headers
 
-Заголовки `X-Gateway-Request-Id`, `X-Gateway-Model-Alias`, `X-Gateway-Model-Snapshot` доступны в начальном HTTP-ответе. Стоимость (`X-Gateway-Cost-USD`) для streaming недоступна в заголовках, так как рассчитывается после завершения потока -- используйте `usage` из события `message_delta`.
+Headers `X-Gateway-Request-Id`, `X-Gateway-Model-Alias`, `X-Gateway-Model-Snapshot` are available in the initial HTTP response. The cost (`X-Gateway-Cost-USD`) is not available in headers for streaming because it is computed after the stream ends — use `usage` from the `message_delta` event instead.
 
 ---
 
 ## 6. Async + webhook POST /api/v1/messages/async
 
-Асинхронный режим: gateway принимает запрос, помещает его в очередь и доставляет результат на webhook URL клиента.
+Async mode: the gateway accepts the request, queues it and delivers the result to the client's webhook URL.
 
-### Запрос
+### Request
 
-```
+```http
 POST /api/v1/messages/async
 Content-Type: application/json
-Authorization: Bearer gw_live_ваш_ключ
+Authorization: Bearer gw_live_your_key
 ```
 
 ```json
@@ -536,15 +540,15 @@ Authorization: Bearer gw_live_ваш_ключ
   "model": "claude-opus",
   "max_tokens": 4096,
   "messages": [
-    {"role": "user", "content": "Проведи детальный анализ архитектуры микросервисов."}
+    {"role": "user", "content": "Produce a detailed analysis of microservice architecture."}
   ],
   "callback_url": "https://your-api.example.com/api/llm-callback"
 }
 ```
 
-**Важно:** значение `callback_url` должно быть **предварительно зарегистрировано** в whitelist клиента (таблица `client_callback_urls`). Запрос с незарегистрированным URL отклоняется с ошибкой 400 `invalid_request_error: callback_url is not whitelisted for this client`.
+**Important:** `callback_url` must be **pre-registered** in the client's whitelist (table `client_callback_urls`). A request with a non-whitelisted URL is rejected with 400 `invalid_request_error: callback_url is not whitelisted for this client`.
 
-### Ответ (202 Accepted)
+### Response (202 Accepted)
 
 ```json
 {
@@ -557,20 +561,20 @@ Authorization: Bearer gw_live_ваш_ключ
 }
 ```
 
-Заголовок: `X-Gateway-Request-Id: req_abc123def456ghi789jkl012`
+Header: `X-Gateway-Request-Id: req_abc123def456ghi789jkl012`
 
-TTL async-записи: `async.pending_ttl_days` (по умолчанию 3 дня).
+Async record TTL: `async.pending_ttl_days` (default 3 days).
 
-### Получение результата по ID
+### Fetching the result by id
 
-Вместо ожидания webhook можно опросить статус:
+Instead of waiting for the webhook, poll for status:
 
-```
+```http
 GET /api/v1/messages/{requestId}
-Authorization: Bearer gw_live_ваш_ключ
+Authorization: Bearer gw_live_your_key
 ```
 
-Ответ (пример для завершённого запроса):
+Response (example for a completed request):
 
 ```json
 {
@@ -594,11 +598,11 @@ Authorization: Bearer gw_live_ваш_ключ
 }
 ```
 
-Возможные значения `status`: `accepted`, `in_progress`, `completed`, `completed_disconnected`, `failed_client_error`, `failed_server_error`, `failed_callback_delivery`, `failed_validation`, `failed_auth`. Если нужно опустить полезную нагрузку -- передайте `?include_response=false`.
+Possible `status` values: `accepted`, `in_progress`, `completed`, `completed_disconnected`, `failed_client_error`, `failed_server_error`, `failed_callback_delivery`, `failed_validation`, `failed_auth`. To omit the payload, pass `?include_response=false`.
 
-### Доставка webhook
+### Webhook delivery
 
-Gateway доставляет результат на `callback_url` в виде **wrapped envelope** -- оригинальный ответ Anthropic обернут в конверт с метаданными gateway:
+The gateway delivers the result to `callback_url` as a **wrapped envelope** — the original Anthropic response wrapped together with gateway metadata:
 
 ```json
 {
@@ -615,7 +619,7 @@ Gateway доставляет результат на `callback_url` в виде 
     "content": [
       {
         "type": "text",
-        "text": "Архитектура микросервисов..."
+        "text": "Microservice architecture..."
       }
     ],
     "stop_reason": "end_turn",
@@ -635,20 +639,20 @@ Gateway доставляет результат на `callback_url` в виде 
 }
 ```
 
-Возможные значения `event`: `message.completed`, `message.failed`. При failed -- поле `error: {type, message}` вместо `anthropic_response`.
+Possible `event` values: `message.completed`, `message.failed`. On failure the body carries `error: {type, message}` instead of `anthropic_response`.
 
-### HMAC-подпись webhook
+### Webhook HMAC signature
 
-Каждый webhook подписан HMAC-SHA256 с использованием signing secret клиента. Подписываемая строка -- `{timestamp}.{body}` (timestamp из заголовка, тело -- сырые байты запроса). Заголовки:
+Each webhook is signed with HMAC-SHA256 using the client's signing secret. The signed string is `{timestamp}.{body}` (timestamp from the header, body — raw request bytes). Headers:
 
-| Заголовок | Описание |
+| Header | Description |
 |-----------|----------|
 | `X-Webhook-Signature` | `sha256={hex}` |
-| `X-Webhook-Timestamp` | Unix timestamp (секунды), участвует в подписи |
-| `X-Webhook-Request-Id` | Gateway request id (для идемпотентности) |
-| `X-Webhook-Event` | `message.completed` или `message.failed` |
+| `X-Webhook-Timestamp` | Unix timestamp (seconds), part of the signature |
+| `X-Webhook-Request-Id` | Gateway request id (idempotency key) |
+| `X-Webhook-Event` | `message.completed` or `message.failed` |
 
-### Валидация подписи (Python)
+### Signature verification (Python)
 
 ```python
 import hmac
@@ -662,13 +666,13 @@ def verify_webhook(body: bytes, timestamp: str, signature_header: str, secret: s
     return hmac.compare_digest(expected, signature_header)
 ```
 
-### Webhook verification с freshness-check
+### Webhook verification with freshness check
 
-Подписанная валидная доставка, пойманная на линии, может быть переиграна атакующим. Чтобы отсечь replay-атаки — проверяй возраст `X-Webhook-Timestamp`: если подпись валидна, но timestamp старше 300 секунд (default), доставку стоит отбросить.
+A signed valid delivery captured on the wire can be replayed by an attacker. To block replay attacks — check the age of `X-Webhook-Timestamp`: if the signature is valid but the timestamp is older than 300 seconds (default), drop the delivery.
 
 **Gateway-side reference implementation:** [`app/Components/Delivery/Webhook/Signer.php::verifyWithFreshness`](../app/Components/Delivery/Webhook/Signer.php).
 
-**Reference на PHP (standalone):**
+**PHP reference (standalone):**
 
 ```php
 function verifyWebhook(
@@ -693,9 +697,9 @@ function verifyWebhook(
 }
 ```
 
-**Reference на TypeScript (Node):**
+**TypeScript reference (Node):**
 
-```ts
+```typescript
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export function verifyWebhook(
@@ -718,45 +722,60 @@ export function verifyWebhook(
 }
 ```
 
-Порядок проверок — signature first, then timestamp — важен: reversing даёт timing-оракул на возраст timestamp'а.
+The order of checks — signature first, then timestamp — matters: reversing it yields a timing oracle on the timestamp's age.
 
-### Политика повторных попыток
+### Retry policy
 
-| Параметр | Значение |
+| Parameter | Value |
 |----------|----------|
-| Максимум попыток | 10 |
-| Стратегия | Экспоненциальный backoff |
-| Начальная задержка | 10 секунд |
-| Максимальная задержка | 3600 секунд (1 час) |
-| Таймаут каждого запроса | 30 секунд |
-| Grace period URL | 86400 секунд (24 часа) |
+| Maximum attempts | 10 |
+| Strategy | Exponential backoff |
+| Initial delay | 10 seconds |
+| Maximum delay | 3600 seconds (1 hour) |
+| Per-request timeout | 30 seconds |
+| URL grace period | 86400 seconds (24 hours) |
 
-Если все попытки исчерпаны, запрос помечается как `failed`. Результат по-прежнему доступен через `GET /api/v1/messages/{requestId}`.
+If all attempts are exhausted, the request is marked `failed`. The result is still available via `GET /api/v1/messages/{requestId}`.
+
+### Delivery outcomes
+
+Each async webhook attempt resolves to one of three terminal states recorded in `async_pending.status`:
+
+| Outcome | Trigger | Status |
+|---|---|---|
+| `delivered` | Client returned HTTP 2xx. | `delivered` |
+| `exhausted (transient)` | `default_max_attempts` (10) transient failures consumed: 5xx, 408, 425, 429, network errors. | `failed_callback_delivery` |
+| `exhausted (permanent)` | A single response with a permanent-fail status: `400, 401, 403, 404, 410, 413, 422` (configurable via `config/llm.php` → `webhook.permanent_fail_statuses`). | `failed_callback_delivery` (no further retries) |
+
+**Client contract:**
+- Return 2xx on acceptance (the body content is ignored).
+- Return 5xx, 502, 503 — or simply close the connection — for transient issues. The gateway will retry with exponential backoff (10s → 20s → … → 3600s cap), up to 10 attempts.
+- Any 4xx in the permanent-fail list is treated as a deliberate rejection and is not retried. This includes auth failures (`401`, `403`), payload-too-large (`413`), and validation rejections (`422`).
 
 ---
 
 ## 7. Batch API
 
-Batch API позволяет отправить до 100 000 запросов одним вызовом с 50% скидкой на стоимость обработки. Результаты доступны в течение 24 часов.
+The Batch API lets you submit up to 100 000 requests in a single call with a 50% discount on processing cost. Results are available within 24 hours.
 
-### Два режима
+### Two modes
 
-**Immediate batch** (`POST /api/v1/batches`) -- отправляет batch немедленно в Anthropic API. Полная совместимость с SDK (`client.messages.batches.create()`).
+**Immediate batch** (`POST /api/v1/batches`) — sends the batch to the Anthropic API immediately. Fully SDK-compatible (`client.messages.batches.create()`).
 
-**Batch-аккумулятор** (`POST /api/v1/messages/batch`) -- запросы накапливаются на стороне gateway и отправляются, когда сработает один из триггеров:
+**Batch accumulator** (`POST /api/v1/messages/batch`) — items accumulate on the gateway side and are flushed when one of the triggers fires:
 
-| Триггер | Порог |
+| Trigger | Threshold |
 |---------|-------|
-| Количество запросов | 100 |
-| Суммарный размер | 50 МБ |
-| Время накопления | 300 секунд (5 минут) |
+| Request count | 100 |
+| Total size | 50 MB |
+| Accumulation time | 300 seconds (5 minutes) |
 
-### Создание immediate batch
+### Creating an immediate batch
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/batches \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "requests": [
       {
@@ -764,7 +783,7 @@ curl -X POST https://gateway.example.com/api/v1/batches \
         "params": {
           "model": "claude-sonnet",
           "max_tokens": 1024,
-          "messages": [{"role": "user", "content": "Столица Франции?"}]
+          "messages": [{"role": "user", "content": "Capital of France?"}]
         }
       },
       {
@@ -772,14 +791,14 @@ curl -X POST https://gateway.example.com/api/v1/batches \
         "params": {
           "model": "claude-sonnet",
           "max_tokens": 1024,
-          "messages": [{"role": "user", "content": "Столица Японии?"}]
+          "messages": [{"role": "user", "content": "Capital of Japan?"}]
         }
       }
     ]
   }'
 ```
 
-Ответ:
+Response:
 
 ```json
 {
@@ -798,93 +817,93 @@ curl -X POST https://gateway.example.com/api/v1/batches \
 }
 ```
 
-### Проверка статуса
+### Checking status
 
 ```bash
 curl https://gateway.example.com/api/v1/batches/bat_abc123def456ghi789jkl012 \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-### Получение результатов
+### Fetching results
 
 ```bash
 curl https://gateway.example.com/api/v1/batches/bat_abc123def456ghi789jkl012/results \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-Формат результатов -- JSONL (каждая строка -- JSON-объект):
+Result format — JSONL (one JSON object per line):
 
 ```json
-{"custom_id":"task-001","result":{"type":"succeeded","message":{"id":"msg_01...","type":"message","role":"assistant","content":[{"type":"text","text":"Столица Франции -- Париж."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":15}}}}
-{"custom_id":"task-002","result":{"type":"succeeded","message":{"id":"msg_02...","type":"message","role":"assistant","content":[{"type":"text","text":"Столица Японии -- Токио."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":14}}}}
+{"custom_id":"task-001","result":{"type":"succeeded","message":{"id":"msg_01...","type":"message","role":"assistant","content":[{"type":"text","text":"The capital of France is Paris."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":15}}}}
+{"custom_id":"task-002","result":{"type":"succeeded","message":{"id":"msg_02...","type":"message","role":"assistant","content":[{"type":"text","text":"The capital of Japan is Tokyo."}],"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":14}}}}
 ```
 
-### Управление batch
+### Batch management
 
 ```bash
-# Отмена
+# Cancel
 curl -X POST https://gateway.example.com/api/v1/batches/bat_.../cancel \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 
-# Удаление (после завершения)
+# Delete (after completion)
 curl -X DELETE https://gateway.example.com/api/v1/batches/bat_... \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 
-# Список всех batch
+# List all batches
 curl https://gateway.example.com/api/v1/batches \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-### Стоимость batch
+### Batch pricing
 
-Batch-запросы стоят 50% от обычной цены:
+Batch requests cost 50% of the regular rate:
 
-| Модель | Input (обычный) | Input (batch) | Output (обычный) | Output (batch) |
+| Model | Input (regular) | Input (batch) | Output (regular) | Output (batch) |
 |--------|:---------------:|:-------------:|:----------------:|:--------------:|
 | claude-opus | $5.00 | $2.50 | $25.00 | $12.50 |
 | claude-sonnet | $3.00 | $1.50 | $15.00 | $7.50 |
 | claude-haiku | $1.00 | $0.50 | $5.00 | $2.50 |
 
-Цены за 1M токенов.
+Prices per 1M tokens.
 
-### Лимиты
+### Limits
 
-- Максимум запросов в batch: 100 000
-- Максимальный max_output_tokens в batch: 300 000 (opus, sonnet) / 64 000 (haiku)
-- Время жизни результатов: 24 часа
+- Maximum requests per batch: 100 000
+- Maximum max_output_tokens per batch: 300 000 (opus, sonnet) / 64 000 (haiku)
+- Result lifetime: 24 hours
 
 ---
 
 ## 8. Sessions (multi-turn)
 
-Sessions -- серверная реализация multi-turn диалогов. Gateway хранит историю сообщений на сервере, позволяя клиенту не передавать всю историю в каждом запросе.
+Sessions are a server-side implementation of multi-turn dialogue. The gateway stores the message history on the server, so the client does not have to resend the full history on every call.
 
-### Когда использовать
+### When to use
 
-- Чат-боты и диалоговые интерфейсы
-- Длительные контексты, которые не помещаются в одно сообщение клиента
-- Сценарии с compaction (сжатие длинного контекста)
+- Chatbots and conversational interfaces
+- Long contexts that do not fit into a single client message
+- Scenarios with compaction (compression of long context)
 
-### Когда НЕ использовать
+### When NOT to use
 
-- Одиночные запросы без продолжения
-- Batch-обработка
-- Случаи, когда клиент хочет полностью контролировать историю
+- One-shot requests with no follow-up
+- Batch processing
+- Cases where the client wants full control over the history
 
-### Создание сессии
+### Creating a session
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/sessions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
-    "system": "Ты полезный ассистент-программист.",
+    "system": "You are a helpful programming assistant.",
     "max_tokens": 4096
   }'
 ```
 
-Ответ:
+Response:
 
 ```json
 {
@@ -896,50 +915,50 @@ curl -X POST https://gateway.example.com/api/v1/sessions \
 }
 ```
 
-### Отправка сообщения в сессию
+### Sending a message into a session
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/sessions/ses_abc123.../messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
-    "content": "Как реализовать паттерн Observer на Python?"
+    "content": "How do I implement the Observer pattern in Python?"
   }'
 ```
 
-Gateway автоматически подставляет историю сессии в контекст. Ответ -- стандартный Anthropic Message object.
+The gateway automatically injects the session history into the context. The response is a standard Anthropic Message object.
 
-### Получение истории
+### Fetching the history
 
 ```bash
 curl https://gateway.example.com/api/v1/sessions/ses_abc123.../messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
 ### Compaction
 
-При приближении к лимиту контекстного окна gateway автоматически применяет compaction -- сжатие ранних сообщений в краткое саммари. Клиент получает заголовок `X-Gateway-Warning: auto_resume_limit_reached`, когда compaction активирован. Подробнее -- раздел 16.
+When the cumulative context approaches the context-window limit, the gateway applies compaction — early messages are compressed into a short summary. The client receives the `X-Gateway-Warning: auto_resume_limit_reached` header when compaction has been activated. See section 16.
 
-### Удаление сессии
+### Deleting a session
 
 ```bash
 curl -X DELETE https://gateway.example.com/api/v1/sessions/ses_abc123... \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-Время жизни сессии по умолчанию: 30 дней.
+Default session lifetime: 30 days.
 
 ---
 
 ## 9. Server-side tools
 
-Gateway поддерживает серверные инструменты Claude, которые выполняются на стороне Anthropic. Для активации инструмента добавьте его в массив `tools` запроса.
+The gateway supports Claude server-side tools that execute inside Anthropic. To enable a tool, add it to the request `tools` array.
 
 ### web_search
 
-Поиск в интернете в реальном времени.
+Real-time web search.
 
-**Стоимость:** $10 за 1000 вызовов.
+**Cost:** $10 per 1000 calls.
 
 ```json
 {
@@ -953,16 +972,16 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Какие новости в мире AI за последнюю неделю?"}
+    {"role": "user", "content": "What is the latest AI news this week?"}
   ]
 }
 ```
 
 ### web_fetch
 
-Загрузка содержимого веб-страницы по URL.
+Fetches the content of a web page by URL.
 
-**Стоимость:** бесплатно.
+**Cost:** free.
 
 ```json
 {
@@ -975,16 +994,16 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Загрузи и суммаризируй содержимое https://example.com/article"}
+    {"role": "user", "content": "Fetch and summarise https://example.com/article"}
   ]
 }
 ```
 
 ### code_execution
 
-Выполнение кода в изолированной песочнице.
+Runs code in an isolated sandbox.
 
-**Стоимость:** $0.05/час (1550 бесплатных часов в месяц).
+**Cost:** $0.05/hour (1550 free hours per month).
 
 ```json
 {
@@ -997,14 +1016,14 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Вычисли первые 20 чисел Фибоначчи и построй график."}
+    {"role": "user", "content": "Compute the first 20 Fibonacci numbers and plot them."}
   ]
 }
 ```
 
 ### text_editor
 
-Инструмент для редактирования текстовых файлов (создание, чтение, замена).
+Tool for editing text files (create, read, replace).
 
 ```json
 {
@@ -1017,14 +1036,14 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Создай файл config.yaml с настройками для веб-сервера."}
+    {"role": "user", "content": "Create a config.yaml with web-server settings."}
   ]
 }
 ```
 
 ### bash
 
-Выполнение bash-команд в песочнице.
+Runs bash commands inside a sandbox.
 
 ```json
 {
@@ -1037,16 +1056,16 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Покажи список файлов в текущей директории."}
+    {"role": "user", "content": "List files in the current directory."}
   ]
 }
 ```
 
 ### computer_use (beta)
 
-Управление компьютером через скриншоты и действия мыши/клавиатуры.
+Drives a computer through screenshots and mouse/keyboard actions.
 
-**Требует beta-заголовок.** Gateway автоматически добавляет необходимый beta-заголовок.
+**Requires a beta header.** The gateway adds the required beta header automatically.
 
 ```json
 {
@@ -1061,14 +1080,14 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Открой браузер и перейди на example.com"}
+    {"role": "user", "content": "Open a browser and navigate to example.com"}
   ]
 }
 ```
 
 ### tool_search
 
-Поиск по доступным инструментам в каталоге.
+Search across available tools in the catalog.
 
 ```json
 {
@@ -1081,14 +1100,14 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Найди инструмент для работы с таблицами."}
+    {"role": "user", "content": "Find a tool for working with spreadsheets."}
   ]
 }
 ```
 
 ### memory
 
-Инструмент долговременной памяти для сохранения и извлечения заметок между сессиями.
+Long-term memory tool for storing and retrieving notes between sessions.
 
 ```json
 {
@@ -1101,14 +1120,14 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Запомни, что мой проект использует Python 3.12 и FastAPI."}
+    {"role": "user", "content": "Remember that my project uses Python 3.12 and FastAPI."}
   ]
 }
 ```
 
-### Programmatic tool calling (пользовательские инструменты)
+### Programmatic tool calling (custom tools)
 
-Помимо серверных инструментов, Claude поддерживает пользовательские tools с описанием JSON Schema. Claude решает, когда вызвать инструмент, и возвращает `tool_use` content block. Клиент выполняет инструмент и отправляет `tool_result` обратно.
+Beyond server-side tools, Claude supports custom tools described with JSON Schema. Claude decides when to invoke a tool and returns a `tool_use` content block. The client executes the tool and sends a `tool_result` back.
 
 ```json
 {
@@ -1117,23 +1136,23 @@ Gateway поддерживает серверные инструменты Claud
   "tools": [
     {
       "name": "get_weather",
-      "description": "Получает текущую погоду для указанного города.",
+      "description": "Returns current weather for the specified city.",
       "input_schema": {
         "type": "object",
         "properties": {
-          "city": {"type": "string", "description": "Название города"}
+          "city": {"type": "string", "description": "City name"}
         },
         "required": ["city"]
       }
     }
   ],
   "messages": [
-    {"role": "user", "content": "Какая погода в Москве?"}
+    {"role": "user", "content": "What is the weather in Moscow?"}
   ]
 }
 ```
 
-Ответ с `tool_use`:
+Response with `tool_use`:
 
 ```json
 {
@@ -1142,14 +1161,14 @@ Gateway поддерживает серверные инструменты Claud
       "type": "tool_use",
       "id": "toolu_01A2B3C4D5E6",
       "name": "get_weather",
-      "input": {"city": "Москва"}
+      "input": {"city": "Moscow"}
     }
   ],
   "stop_reason": "tool_use"
 }
 ```
 
-Клиент вызывает свой API погоды и возвращает результат:
+The client calls its weather API and returns the result:
 
 ```json
 {
@@ -1158,7 +1177,7 @@ Gateway поддерживает серверные инструменты Claud
   "tools": [
     {
       "name": "get_weather",
-      "description": "Получает текущую погоду для указанного города.",
+      "description": "Returns current weather for the specified city.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1169,7 +1188,7 @@ Gateway поддерживает серверные инструменты Claud
     }
   ],
   "messages": [
-    {"role": "user", "content": "Какая погода в Москве?"},
+    {"role": "user", "content": "What is the weather in Moscow?"},
     {
       "role": "assistant",
       "content": [
@@ -1177,7 +1196,7 @@ Gateway поддерживает серверные инструменты Claud
           "type": "tool_use",
           "id": "toolu_01A2B3C4D5E6",
           "name": "get_weather",
-          "input": {"city": "Москва"}
+          "input": {"city": "Moscow"}
         }
       ]
     },
@@ -1187,7 +1206,7 @@ Gateway поддерживает серверные инструменты Claud
         {
           "type": "tool_result",
           "tool_use_id": "toolu_01A2B3C4D5E6",
-          "content": "Москва: +15C, облачно, ветер 5 м/с"
+          "content": "Moscow: +15C, cloudy, wind 5 m/s"
         }
       ]
     }
@@ -1197,15 +1216,15 @@ Gateway поддерживает серверные инструменты Claud
 
 ### Citations
 
-Claude может возвращать citations -- ссылки на исходные фрагменты текста, которые использовались для генерации ответа. Citations автоматически включаются при наличии документов в контексте.
+Claude can return citations — references to source text fragments used to generate the answer. Citations are enabled automatically when documents are present in the context.
 
 ### Search result blocks (RAG)
 
-Для реализации RAG-паттерна передавайте результаты поиска как `search_result` content blocks. Claude будет использовать их как контекст и может ссылаться на них через citations.
+For the RAG pattern, send search results as `search_result` content blocks. Claude uses them as context and may reference them through citations.
 
 ### Structured outputs (output_config)
 
-Для получения структурированного JSON-ответа используйте параметр `output_config` с JSON Schema:
+To get a structured JSON response, use the `output_config` parameter with a JSON Schema:
 
 ```json
 {
@@ -1222,34 +1241,34 @@ Claude может возвращать citations -- ссылки на исход
     }
   },
   "messages": [
-    {"role": "user", "content": "Проанализируй тональность: 'Отличный продукт, рекомендую!'"}
+    {"role": "user", "content": "Analyse sentiment: 'Excellent product, recommended!'"}
   ]
 }
 ```
 
 ### MCP connector (beta)
 
-См. §13.3 «MCP connector».
+See §13.3 "MCP connector".
 
 ### Inference geo
 
-По умолчанию все запросы обрабатываются в регионе US. Это настраивается на уровне шлюза.
+By default all requests are processed in the US region. This is configured at the gateway level.
 
 ---
 
 ## 10. Files API
 
-Files API позволяет загружать файлы на сервер и ссылаться на них в запросах по ID, избегая повторной передачи больших файлов.
+The Files API lets you upload files to the server and reference them by id in subsequent requests, avoiding repeated upload of large files.
 
-### Загрузка файла
+### Uploading a file
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/files \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -F "file=@document.pdf"
 ```
 
-Ответ:
+Response:
 
 ```json
 {
@@ -1261,9 +1280,9 @@ curl -X POST https://gateway.example.com/api/v1/files \
 }
 ```
 
-### Использование файла в запросе
+### Using the file in a request
 
-Ссылайтесь на загруженный файл через content block типа `file`:
+Reference the uploaded file via a `file` content block:
 
 ```json
 {
@@ -1282,7 +1301,7 @@ curl -X POST https://gateway.example.com/api/v1/files \
         },
         {
           "type": "text",
-          "text": "Суммаризируй этот документ."
+          "text": "Summarise this document."
         }
       ]
     }
@@ -1290,47 +1309,47 @@ curl -X POST https://gateway.example.com/api/v1/files \
 }
 ```
 
-### Список файлов
+### Listing files
 
 ```bash
 curl https://gateway.example.com/api/v1/files \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-### Удаление файла
+### Deleting a file
 
 ```bash
 curl -X DELETE https://gateway.example.com/api/v1/files/file_abc123... \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-### Лимиты
+### Limits
 
-- Максимальный размер файла: 500 МБ
-- Файлы без обращений автоматически помечаются через 90 дней
-- Безвозвратное удаление: 14 дней после пометки
+- Maximum file size: 500 MB
+- Files with no references are flagged after 90 days
+- Hard delete: 14 days after flagging
 
 ---
 
-## 11. Token counting и estimation
+## 11. Token counting and estimation
 
-### Подсчет токенов
+### Counting tokens
 
-Endpoint `POST /api/v1/messages/count_tokens` позволяет узнать количество входных токенов до отправки запроса.
+Endpoint `POST /api/v1/messages/count_tokens` reports the input-token count before sending a request.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "messages": [
-      {"role": "user", "content": "Привет, как дела?"}
+      {"role": "user", "content": "Hello, how are you?"}
     ]
   }'
 ```
 
-Ответ:
+Response:
 
 ```json
 {
@@ -1338,77 +1357,77 @@ curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
 }
 ```
 
-### Заголовки ответа
+### Response headers
 
-| Заголовок | Описание |
+| Header | Description |
 |-----------|----------|
-| `X-Gateway-Request-Id` | ID запроса |
-| `X-Gateway-Estimated-Cost-USD` | Оценочная стоимость полного запроса |
+| `X-Gateway-Request-Id` | Request id |
+| `X-Gateway-Estimated-Cost-USD` | Estimated cost of the full request |
 
-Оценка стоимости рассчитывается как: `input_tokens * input_price + (input_tokens * 0.5) * output_price`. Множитель 0.5 -- эвристический коэффициент для оценки выходных токенов.
+The cost estimate is computed as `input_tokens * input_price + (input_tokens * 0.5) * output_price`. The 0.5 multiplier is a heuristic for output-token estimation.
 
-### Оценка бюджета
+### Budget planning
 
-Для планирования расходов:
+To plan spend:
 
-1. Вызовите `count_tokens` с репрезентативным запросом.
-2. Используйте `X-Gateway-Estimated-Cost-USD` для оценки стоимости одного запроса.
-3. Умножьте на ожидаемое количество запросов.
+1. Call `count_tokens` with a representative request.
+2. Use `X-Gateway-Estimated-Cost-USD` as the per-request cost estimate.
+3. Multiply by the expected number of requests.
 
-Для проверки фактических расходов используйте:
+For actual spend, query:
 
 ```bash
 curl https://gateway.example.com/api/v1/clients/me/usage \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
 ---
 
 ## 12. Prompt caching
 
-Prompt caching позволяет кэшировать часть контекста между запросами, экономя до 90% стоимости входных токенов и увеличивая пропускную способность до 5 раз.
+Prompt caching caches part of the context between requests, saving up to 90% of input-token cost and increasing throughput up to 5x.
 
-### Как работает
+### How it works
 
-Anthropic кэширует контент, помеченный точками кэширования (`cache_control`). При повторном запросе с тем же префиксом кэшированные токены не перечитываются, а берутся из кэша.
+Anthropic caches content marked with cache breakpoints (`cache_control`). On a follow-up request with the same prefix, cached tokens are not re-read — they are served from the cache.
 
-### Минимальные размеры кэшируемого контента
+### Minimum cacheable size
 
-| Модель | Минимум токенов для кэширования |
+| Model | Minimum tokens for caching |
 |--------|:-------------------------------:|
 | claude-opus | 1024 |
 | claude-sonnet | 1024 |
 | claude-haiku | 2048 |
 
-Если контент короче минимального размера, кэширование не применяется, но ошибки не возникает.
+If content is smaller than the minimum, caching does not apply but no error is raised.
 
-### TTL кэша
+### Cache TTL
 
-| TTL | Цена записи (множитель от input) | Цена чтения (множитель от input) |
+| TTL | Write price (input multiplier) | Read price (input multiplier) |
 |-----|:---------------------------------:|:---------------------------------:|
-| 5 минут (по умолчанию) | 1.25x | ~0.1x |
-| 1 час | ~2x | ~0.1x |
+| 5 minutes (default) | 1.25x | ~0.1x |
+| 1 hour | ~2x | ~0.1x |
 
-### Стратегия размещения cache_control
+### Where to place cache_control
 
-Кэшируйте то, что повторяется между запросами:
+Cache what repeats between requests:
 
-1. **System prompt** -- самый частый кандидат
-2. **Статические инструменты (tools)** -- не меняются между запросами
-3. **Документы и контекст** -- общий контекст для серии запросов
-4. **Начало истории** -- ранние сообщения в multi-turn диалоге
+1. **System prompt** — the most common candidate
+2. **Static tools** — they do not change between requests
+3. **Documents and context** — shared context for a series of requests
+4. **Start of history** — early messages in a multi-turn dialogue
 
-Размещайте `cache_control` в конце кэшируемого блока.
+Place `cache_control` at the end of the cacheable block.
 
-### Правило 20 блоков
+### The 20-block rule
 
-Anthropic обрабатывает `cache_control` breakpoints в последних 20 блоках, помеченных `cache_control`. Breakpoints за пределами 20 игнорируются (считая от конца).
+Anthropic processes `cache_control` breakpoints across the last 20 blocks marked with `cache_control`. Breakpoints beyond 20 are ignored (counting from the end).
 
-### Автоматическое кэширование
+### Automatic caching
 
-Gateway по умолчанию включает автоматическое кэширование верхнего уровня (`auto_top_level`). Это означает, что system prompt и tools автоматически получают `cache_control` breakpoint, если их размер превышает минимальный порог.
+By default the gateway enables top-level auto-caching (`auto_top_level`). The system prompt and tools receive a `cache_control` breakpoint automatically when their size exceeds the minimum threshold.
 
-### Ручное управление cache_control
+### Manual cache_control
 
 ```json
 {
@@ -1417,17 +1436,17 @@ Gateway по умолчанию включает автоматическое к
   "system": [
     {
       "type": "text",
-      "text": "Ты эксперт по анализу данных. Вот база знаний: ...(длинный текст)...",
+      "text": "You are a data analysis expert. Knowledge base: ...(long text)...",
       "cache_control": {"type": "ephemeral"}
     }
   ],
   "messages": [
-    {"role": "user", "content": "Проанализируй тренд за Q1."}
+    {"role": "user", "content": "Analyse the Q1 trend."}
   ]
 }
 ```
 
-TTL 1 час (для batch-запросов автоматически):
+1-hour TTL (automatic for batch requests):
 
 ```json
 {
@@ -1437,35 +1456,35 @@ TTL 1 час (для batch-запросов автоматически):
 
 ### Anti-patterns
 
-- Не ставьте `cache_control` на каждый блок -- это не ускоряет, а может замедлить обработку.
-- Не кэшируйте контент, который меняется каждый запрос -- вы платите за запись, но никогда не читаете из кэша.
-- Не кэшируйте контент меньше минимального размера -- breakpoint будет проигнорирован.
-- Помните о лимите 20 breakpoints -- если вы используете больше, самые ранние игнорируются.
+- Do not put `cache_control` on every block — it does not speed processing up and may slow it down.
+- Do not cache content that changes per request — you pay for writes but never read from cache.
+- Do not cache content smaller than the minimum size — the breakpoint is ignored.
+- Mind the 20-breakpoint cap — earliest breakpoints beyond it are ignored.
 
 ### Cache-aware ITPM
 
-При активном кэшировании фактическое потребление ITPM (Input Tokens Per Minute) на стороне Anthropic снижается, так как кэшированные токены обрабатываются быстрее. Это позволяет эффективнее использовать rate limits.
+When caching is active, effective ITPM (Input Tokens Per Minute) consumption on Anthropic's side drops because cached tokens are processed faster. This makes more efficient use of rate limits.
 
 ---
 
-## 13. Расширенные возможности
+## 13. Advanced features
 
-Эта секция описывает дополнительные возможности gateway, которые могут требовать предварительной активации через `allowed_features`. Каждая подсекция содержит назначение, формат запроса/ответа, требования к `allowed_features`, коды ошибок и примеры `curl`.
+This section covers extra gateway capabilities, several of which require activation through `allowed_features`. Each subsection lists purpose, request/response shape, `allowed_features` requirements, error codes, and `curl` examples.
 
 ### 13.1 Skills API
 
-**Назначение.** Skills — подключаемые «знания» Claude, доступные внутри инструмента `code_execution`. Сейчас поддерживаются только prebuilt-скиллы (работа с офисными форматами). Custom-скиллы пока не принимаются и возвращают `501 custom_skills_not_yet_supported`.
+**Purpose.** Skills — pluggable Claude "knowledge" available inside the `code_execution` tool. Only prebuilt skills are supported today (working with office formats). Custom skills are not accepted yet and return `501 custom_skills_not_yet_supported`.
 
-**Эндпоинты.**
+**Endpoints.**
 
-- `POST /api/v1/skills` — создать prebuilt-скилл для клиента.
-- `GET /api/v1/skills` — список активных скиллов клиента.
-- `GET /api/v1/skills/{skill_id}` — карточка одного скилла.
-- `DELETE /api/v1/skills/{skill_id}` — soft-delete скилла.
+- `POST /api/v1/skills` — create a prebuilt skill for the client.
+- `GET /api/v1/skills` — list active skills for the client.
+- `GET /api/v1/skills/{skill_id}` — single skill card.
+- `DELETE /api/v1/skills/{skill_id}` — soft-delete the skill.
 
-Идентификатор имеет формат `skl_` + 24 символа `[A-Za-z0-9]` и задан в роутинге (`routes/api.php`, regex `skl_[A-Za-z0-9]{24}`). Заголовки аутентификации — см. §3.
+The identifier has the format `skl_` + 24 `[A-Za-z0-9]` characters and is enforced in routing (`routes/api.php`, regex `skl_[A-Za-z0-9]{24}`). For authentication headers, see §3.
 
-#### Формат запроса `POST /api/v1/skills`
+#### Request format `POST /api/v1/skills`
 
 ```json
 {
@@ -1474,12 +1493,12 @@ TTL 1 час (для batch-запросов автоматически):
 }
 ```
 
-Поля:
+Fields:
 
-- `type` (string, обязательное): `"prebuilt"` — единственный поддерживаемый вариант; `"custom"` вернёт `501`.
-- `name` (string, обязательное для `prebuilt`): одно из `xlsx`, `docx`, `pptx`, `pdf`. Полный список — конфиг `claude.skills.prebuilt`.
+- `type` (string, required): `"prebuilt"` is the only supported value; `"custom"` returns `501`.
+- `name` (string, required for `prebuilt`): one of `xlsx`, `docx`, `pptx`, `pdf`. Full list — config `claude.skills.prebuilt`.
 
-#### Формат ответа `POST /api/v1/skills` (201 Created)
+#### Response format `POST /api/v1/skills` (201 Created)
 
 ```json
 {
@@ -1491,9 +1510,9 @@ TTL 1 час (для batch-запросов автоматически):
 }
 ```
 
-Поле `version` здесь **не возвращается** — оно добавляется только в ответах `GET /skills/{id}` и `GET /skills`.
+The `version` field is **not returned** here — it is added only in `GET /skills/{id}` and `GET /skills` responses.
 
-#### Формат ответа `GET /api/v1/skills/{skill_id}` (200 OK)
+#### Response format `GET /api/v1/skills/{skill_id}` (200 OK)
 
 ```json
 {
@@ -1506,7 +1525,7 @@ TTL 1 час (для batch-запросов автоматически):
 }
 ```
 
-#### Формат ответа `GET /api/v1/skills` (200 OK)
+#### Response format `GET /api/v1/skills` (200 OK)
 
 ```json
 {
@@ -1525,56 +1544,56 @@ TTL 1 час (для batch-запросов автоматически):
 
 #### `DELETE /api/v1/skills/{skill_id}` (204 No Content)
 
-Удаление — soft: запись помечается `is_deleted = true`, тело ответа пустое. Повторное создание скилла с тем же `name` после удаления порождает **новый** `skill_id`.
+Deletion is soft: the record is marked `is_deleted = true` and the response body is empty. Re-creating a skill with the same `name` after deletion produces a **new** `skill_id`.
 
-#### Использование skills в `/api/v1/messages`
+#### Using skills in `/api/v1/messages`
 
-Чтобы задействовать скилл в обычном запросе, передайте массив `skill_id` в поле `skills` и одновременно добавьте в `tools` инструмент с `type`, начинающимся на `code_execution` (валидатор использует `str_starts_with`-style проверку — любой `tool.type`, начинающийся с `code_execution`, проходит prefix-проверку для skills). Без такого инструмента gateway вернёт `400 skills_require_code_execution`.
+To use a skill in a regular request, pass an array of `skill_id` in the `skills` field and add a tool with `type` starting with `code_execution` to `tools` (the validator uses a `str_starts_with`-style check — any `tool.type` starting with `code_execution` passes the prefix check for skills). Without such a tool the gateway returns `400 skills_require_code_execution`.
 
-В примерах используйте актуальное значение `code_execution_20260120` (константа `ToolTypeCatalog::CODE_EXECUTION`). Это единственный идентификатор, который одновременно проходит feature-check `code_execution` через exact-match в `ToolTypeCatalog::FEATURE_MAP` — legacy-значения (например, `code_execution_20250522`) пройдут prefix-проверку для skills, но провалят feature-check.
+In examples, use the current value `code_execution_20260120` (constant `ToolTypeCatalog::CODE_EXECUTION`). It is the only identifier that simultaneously passes the `code_execution` feature-check via exact match in `ToolTypeCatalog::FEATURE_MAP` — legacy values (such as `code_execution_20250522`) pass the prefix check for skills but fail the feature-check.
 
-**Требования к `allowed_features`.** Нужна фича `skills: true`. **Фича `skills` не входит в список `ClientEnableFeature::KNOWN_FEATURES` — CLI `php artisan client:enable-feature <id> skills` отклонит команду как «Unknown feature». Активация возможна только прямым обновлением JSON-колонки `allowed_features` у клиента (см. §13.6).**
+**`allowed_features` requirement.** Requires `skills: true`. **The `skills` feature is not in `ClientEnableFeature::KNOWN_FEATURES` — the CLI `php artisan client:enable-feature <id> skills` rejects the command as "Unknown feature". Activation is possible only through direct update of the JSON column `allowed_features` on the client (see §13.6).**
 
-**Beta-header.** При непустом `payload.skills` gateway автоматически добавляет заголовок `anthropic-beta: skills-2025-10-02` (конфиг `claude.beta_headers.skills`; логика — `PayloadBuilder::detectBetaFeatures`).
+**Beta header.** When `payload.skills` is non-empty, the gateway adds `anthropic-beta: skills-2025-10-02` automatically (config `claude.beta_headers.skills`; logic — `PayloadBuilder::detectBetaFeatures`).
 
-#### Коды ошибок Skills API
+#### Skills API error codes
 
-| HTTP | `error.type` | Условие |
+| HTTP | `error.type` | Condition |
 |------|-------------|---------|
-| 400 | `invalid_skill_type` | `POST /skills`: `type` не равен `"prebuilt"` или `"custom"`. |
-| 400 | `skill_creation_failed` | `POST /skills`: неизвестный prebuilt-`name` (сообщение `Unknown prebuilt skill: '<name>'`). |
-| 400 | `skills_not_enabled` | Payload в `/messages`: поле `skills` задано, но у клиента нет фичи `skills` (проверка в `MessageRequestValidator`, это уже не Skills API). |
-| 400 | `skills_require_code_execution` | Payload в `/messages`: `skills` задано, но ни один `tools[].type` не начинается на `code_execution`. |
-| 403 | `skill_creation_failed` | `POST /skills` без фичи `skills`. Сообщение — `Skills feature is not enabled for this client`. Коллизия с `400` — различать по HTTP-коду. |
-| 403 | `skills_list_failed` | `GET /skills` без фичи `skills`. |
-| 403 | `skill_delete_failed` | `DELETE /skills/{id}` без фичи `skills`. |
-| 404 | `skill_not_found` | `GET /skills/{id}` / `DELETE /skills/{id}`: id неизвестен, soft-deleted либо принадлежит другому клиенту. |
+| 400 | `invalid_skill_type` | `POST /skills`: `type` is neither `"prebuilt"` nor `"custom"`. |
+| 400 | `skill_creation_failed` | `POST /skills`: unknown prebuilt `name` (message `Unknown prebuilt skill: '<name>'`). |
+| 400 | `skills_not_enabled` | `/messages` payload: `skills` is set but the client lacks the `skills` feature (check in `MessageRequestValidator`, this is no longer Skills API). |
+| 400 | `skills_require_code_execution` | `/messages` payload: `skills` is set but no `tools[].type` starts with `code_execution`. |
+| 403 | `skill_creation_failed` | `POST /skills` without the `skills` feature. Message — `Skills feature is not enabled for this client`. Collision with `400` — distinguish by HTTP code. |
+| 403 | `skills_list_failed` | `GET /skills` without the `skills` feature. |
+| 403 | `skill_delete_failed` | `DELETE /skills/{id}` without the `skills` feature. |
+| 404 | `skill_not_found` | `GET /skills/{id}` / `DELETE /skills/{id}`: id is unknown, soft-deleted, or owned by another client. |
 | 501 | `custom_skills_not_yet_supported` | `POST /skills`: `type: "custom"`. |
 
-**Важное примечание про gating.** Ошибки активации в Skills API устроены иначе, чем у server-tools. `SkillsOrchestrator::assertSkillsEnabled` бросает `RuntimeException` с HTTP-кодом `403`, но контроллер сам ловит исключение и возвращает эндпоинт-специфичный `error.type`: `POST /skills` → `skill_creation_failed`, `GET /skills` → `skills_list_failed`, `DELETE /skills/{id}` → `skill_delete_failed`. Поле `error.type` в теле ответов Skills API всегда берётся из таблицы выше — «общая» валидационная ошибка `skills_not_enabled` возникает только в `/messages`. Метод `GET /skills/{id}` **не вызывает** `assertSkillsEnabled`: для клиента без фичи результатом будет `404 skill_not_found` (скилл либо не создан, либо принадлежит другому клиенту), а не `403`.
+**Important note on gating.** Activation errors in Skills API are wired differently from server-tools. `SkillsOrchestrator::assertSkillsEnabled` throws a `RuntimeException` with HTTP code `403`, but the controller catches the exception itself and returns an endpoint-specific `error.type`: `POST /skills` → `skill_creation_failed`, `GET /skills` → `skills_list_failed`, `DELETE /skills/{id}` → `skill_delete_failed`. The `error.type` field in Skills API responses always comes from the table above — the "generic" validation error `skills_not_enabled` happens only in `/messages`. The `GET /skills/{id}` method **does not** call `assertSkillsEnabled`: for a client without the feature the result is `404 skill_not_found` (the skill either does not exist or belongs to another client), not `403`.
 
-#### Ограничения и взаимные несовместимости
+#### Restrictions and incompatibilities
 
-- Custom-скиллы — всегда `501 custom_skills_not_yet_supported`, загрузка артефактов не поддерживается.
-- `skills` в payload без инструмента `code_execution*` — `400 skills_require_code_execution`.
-- Soft-delete необратим на уровне API: новый `POST /skills` с тем же `name` создаёт запись с другим `skill_id` и `version: 1`.
+- Custom skills — always `501 custom_skills_not_yet_supported`; artefact upload is not supported.
+- `skills` in payload without a `code_execution*` tool — `400 skills_require_code_execution`.
+- Soft-delete is irreversible at the API level: a new `POST /skills` with the same `name` creates a record with a different `skill_id` and `version: 1`.
 
-#### Примеры `curl`
+#### `curl` examples
 
-Создать prebuilt-скилл для Excel.
+Create a prebuilt skill for Excel.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/skills \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{"type":"prebuilt","name":"xlsx"}'
 ```
 
-Использовать скилл в `/api/v1/messages` вместе с `code_execution_20260120`.
+Use the skill in `/api/v1/messages` together with `code_execution_20260120`.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
@@ -1584,16 +1603,16 @@ curl -X POST https://gateway.example.com/api/v1/messages \
       {"type": "code_execution_20260120", "name": "code_execution"}
     ],
     "messages": [
-      {"role": "user", "content": "Открой приложенный .xlsx и посчитай сумму колонки B."}
+      {"role": "user", "content": "Open the attached .xlsx and sum column B."}
     ]
   }'
 ```
 
-Попытка создать скилл для клиента без фичи `skills` — ответ `403`.
+Trying to create a skill for a client without the `skills` feature returns `403`.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/skills \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{"type":"prebuilt","name":"xlsx"}'
 ```
@@ -1610,78 +1629,78 @@ curl -X POST https://gateway.example.com/api/v1/skills \
 
 ### 13.2 Fast mode
 
-**Назначение.** Ускоренный инференс Claude Opus: приоритетная обработка запроса на стороне Anthropic ценой повышенного тарифа. Применимо там, где latency критичнее стоимости (интерактивный чат, интерактивные подсказки). Для `count_tokens` режим не имеет смысла — валидатор специальной ошибки не возвращает, но запрос «посчитать токены быстрее» бессмыслен; не используйте `speed: "fast"` в таких сценариях.
+**Purpose.** Accelerated Claude Opus inference: priority handling on Anthropic's side at a higher rate. Use it where latency matters more than cost (interactive chat, interactive prompts). For `count_tokens` the mode is meaningless — the validator does not return a dedicated error, but counting tokens "faster" makes no sense; do not use `speed: "fast"` in such scenarios.
 
-**Параметр payload.** В теле запроса `POST /api/v1/messages` (и в session/async контекстах, использующих тот же валидатор) — поле `speed`. Допустимые значения из enum `App\Components\Validation\Enums\Speed`:
+**Payload parameter.** In `POST /api/v1/messages` (and in session/async contexts using the same validator) — the `speed` field. Allowed values from enum `App\Components\Validation\Enums\Speed`:
 
-- `"standard"` — значение по умолчанию;
+- `"standard"` — default value;
 - `"fast"` — fast mode.
 
-Любое другое значение → `400 speed_invalid`.
+Any other value → `400 speed_invalid`.
 
-**Поддержка по моделям.** Fast mode доступен только на `claude-opus`. Источник — колонка `supports_fast_mode` в `config/llm.php → claude.model_capabilities`:
+**Per-model support.** Fast mode is available only on `claude-opus`. Source — column `supports_fast_mode` in `config/llm.php → claude.model_capabilities`:
 
-| Модель | `supports_fast_mode` |
+| Model | `supports_fast_mode` |
 |--------|----------------------|
 | `claude-opus` | `true` |
 | `claude-sonnet` | `false` |
 | `claude-haiku` | `false` |
 
-Полные характеристики моделей — см. §14. Выбор модели.
+Full model capabilities — see §14. Choosing a model.
 
-**Требование `allowed_features`.** Нужна фича `fast_mode: true`. **CLI `php artisan client:enable-feature <id> fast_mode` не поддерживает эту фичу — имя `fast_mode` отсутствует в `ClientEnableFeature::KNOWN_FEATURES`. Активация выполняется прямым обновлением JSON-колонки `allowed_features` у клиента. Подробности — §13.6.**
+**`allowed_features` requirement.** Requires `fast_mode: true`. **The CLI `php artisan client:enable-feature <id> fast_mode` does not support this feature — `fast_mode` is missing from `ClientEnableFeature::KNOWN_FEATURES`. Activation is performed via direct update of the client's JSON `allowed_features` column. Details — §13.6.**
 
-**Несовместимости.**
+**Incompatibilities.**
 
-- `speed: "fast"` + `service_tier: "auto"` → `400 fast_mode_priority_incompatible` (два ускорителя одновременно не разрешены).
-- `speed: "fast"` внутри Batch API (payload пункта `/api/v1/batches`) → `400 fast_mode_batch_incompatible`.
-- `speed: "fast"` на `claude-sonnet` или `claude-haiku` → `400 fast_mode_model_unsupported`.
-- `count_tokens`: режим семантически не применим; валидатор его не отклоняет специальной ошибкой, но ожидаемого эффекта не даст.
+- `speed: "fast"` + `service_tier: "auto"` → `400 fast_mode_priority_incompatible` (two accelerators at once are not allowed).
+- `speed: "fast"` inside Batch API (`/api/v1/batches` item payload) → `400 fast_mode_batch_incompatible`.
+- `speed: "fast"` on `claude-sonnet` or `claude-haiku` → `400 fast_mode_model_unsupported`.
+- `count_tokens`: the mode is semantically inapplicable; the validator does not reject it with a special error but it has no measurable effect.
 
-**Ценообразование.** При `speed: "fast"` стоимость `input` и `output` токенов умножается на множитель `×6.0` (`config/llm.php → claude.pricing.fast_multiplier`). Кэш-операции (`cache_write_5m`, `cache_write_1h`, `cache_read`) считаются по обычному тарифу — множитель к ним **не применяется**. Базовые ставки за 1M токенов — см. §14. Выбор модели → «Стоимость за 1M токенов».
+**Pricing.** With `speed: "fast"` the cost of `input` and `output` tokens is multiplied by `×6.0` (`config/llm.php → claude.pricing.fast_multiplier`). Cache operations (`cache_write_5m`, `cache_write_1h`, `cache_read`) are billed at the regular rate — the multiplier **does not apply**. Base rates per 1M tokens — see §14. Choosing a model → "Cost per 1M tokens".
 
-**Beta-header.** При `payload.speed === "fast"` gateway автоматически добавляет `anthropic-beta: fast-mode-2026-02-01` (`config/llm.php → claude.beta_headers.fast_mode`; логика — `PayloadBuilder::detectBetaFeatures`).
+**Beta header.** When `payload.speed === "fast"`, the gateway adds `anthropic-beta: fast-mode-2026-02-01` automatically (`config/llm.php → claude.beta_headers.fast_mode`; logic — `PayloadBuilder::detectBetaFeatures`).
 
-**Коды ошибок.** Порядок строк повторяет порядок проверок валидатора — первая сработавшая ошибка short-circuit'ит остальные.
+**Error codes.** Row order mirrors validator check order — the first matching error short-circuits the rest.
 
-| HTTP | `error.type` | Триггер |
+| HTTP | `error.type` | Trigger |
 |------|-------------|---------|
-| 400 | `speed_invalid` | `speed` не входит в enum (`standard` \| `fast`). |
-| 400 | `fast_mode_not_enabled` | `speed: "fast"` и у клиента нет фичи `fast_mode`. |
-| 400 | `fast_mode_model_unsupported` | `speed: "fast"` на модели без `supports_fast_mode` (`claude-sonnet`, `claude-haiku`). |
-| 400 | `fast_mode_batch_incompatible` | `speed: "fast"` в контексте Batch API. |
+| 400 | `speed_invalid` | `speed` is not in the enum (`standard` \| `fast`). |
+| 400 | `fast_mode_not_enabled` | `speed: "fast"` and the client lacks the `fast_mode` feature. |
+| 400 | `fast_mode_model_unsupported` | `speed: "fast"` on a model without `supports_fast_mode` (`claude-sonnet`, `claude-haiku`). |
+| 400 | `fast_mode_batch_incompatible` | `speed: "fast"` inside Batch API. |
 | 400 | `fast_mode_priority_incompatible` | `speed: "fast"` + `service_tier: "auto"`. |
 
-#### Примеры `curl`
+#### `curl` examples
 
-Успешный запрос с fast mode на `claude-opus`.
+Successful fast-mode request on `claude-opus`.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-opus",
     "max_tokens": 256,
     "speed": "fast",
     "messages": [
-      {"role": "user", "content": "Дай короткий ответ: что такое CAP-теорема?"}
+      {"role": "user", "content": "Give a short answer: what is the CAP theorem?"}
     ]
   }'
 ```
 
-Тот же запрос на `claude-sonnet` отклоняется с `400 fast_mode_model_unsupported`.
+The same request on `claude-sonnet` is rejected with `400 fast_mode_model_unsupported`.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 256,
     "speed": "fast",
     "messages": [
-      {"role": "user", "content": "Тест"}
+      {"role": "user", "content": "Test"}
     ]
   }'
 ```
@@ -1698,11 +1717,11 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 
 ### 13.3 MCP connector
 
-**Назначение.** Подключение внешних серверов Model Context Protocol (MCP) прямо из запроса к `/api/v1/messages`. Клиенту не нужно хостить инструменты у себя — Anthropic дотягивается до указанного MCP-сервера (обычно SSE по HTTPS) и вызывает его инструменты от имени модели. Типовые сценарии: корпоративный поиск по документации, CRM/ERP lookup, сторонние SaaS-интеграции через MCP.
+**Purpose.** Plug external Model Context Protocol (MCP) servers directly into a `/api/v1/messages` request. The client does not host the tools itself — Anthropic reaches the configured MCP server (typically SSE over HTTPS) and calls its tools on behalf of the model. Typical scenarios: corporate documentation search, CRM/ERP lookup, third-party SaaS integrations through MCP.
 
-**Параметр payload.** Поле `mcp_servers` — массив объектов, описывающих внешние MCP-серверы. Также допустимо в session/async-запросах, использующих тот же валидатор.
+**Payload parameter.** The `mcp_servers` field — an array of objects describing external MCP servers. Also allowed in session/async requests that share the same validator.
 
-**Структура элемента.** Пример:
+**Element shape.** Example:
 
 ```json
 {
@@ -1714,45 +1733,45 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 }
 ```
 
-| Поле | Обязательное | Тип | Описание |
+| Field | Required | Type | Description |
 |------|-------------|-----|----------|
-| `type` | да | string | Сейчас наблюдаемое значение — `"url"` (подтверждено в `tests/Unit/Claude/MCPConnectorPayloadTest.php`). |
-| `url` | да | string | HTTPS-адрес MCP-сервера (как правило, SSE endpoint). |
-| `name` | да | string | Короткий алиас сервера. Anthropic использует его в именах `tool_use`-блоков как `<name>__<tool>`. |
-| `authorization_token` | нет | string | Передаётся в заголовке `Authorization` при обращении Anthropic к MCP-серверу. **Маскируется в логах шлюза** (см. «Безопасность»). |
-| `tool_configuration` | нет | object | Прокидывается в Anthropic без изменений; шлюз внутреннюю структуру не валидирует. |
+| `type` | yes | string | The currently observed value is `"url"` (confirmed in `tests/Unit/Claude/MCPConnectorPayloadTest.php`). |
+| `url` | yes | string | HTTPS address of the MCP server (typically an SSE endpoint). |
+| `name` | yes | string | Short alias for the server. Anthropic uses it in `tool_use` block names as `<name>__<tool>`. |
+| `authorization_token` | no | string | Sent in the `Authorization` header when Anthropic calls the MCP server. **Masked in gateway logs** (see "Security"). |
+| `tool_configuration` | no | object | Forwarded to Anthropic unchanged; the gateway does not validate the inner structure. |
 
-Более подробная схема элемента — в документации Anthropic для беты `mcp-client-2025-11-20`.
+A more detailed element schema lives in Anthropic's documentation for the `mcp-client-2025-11-20` beta.
 
-**Связка с `tools`.** Шлюз **не требует** наличия `mcp_toolset`-маркера в `tools`. Согласно контракту Anthropic допустим паттерн, при котором клиент дополнительно указывает `{"type": "mcp_toolset", "server_name": "<name>"}` в `tools` — если он присутствует, шлюз пробрасывает его как есть, без валидации.
+**Pairing with `tools`.** The gateway **does not require** an `mcp_toolset` marker in `tools`. According to the Anthropic contract a pattern is allowed where the client also adds `{"type": "mcp_toolset", "server_name": "<name>"}` to `tools` — when present, the gateway forwards it as is, without validation.
 
-**Контракт ответа.** Для каждого блока `tool_use`, чей `name` имеет форму `<server_name>__<tool>`, шлюз добавляет в блок поле `mcp_server_name: "<server_name>"` — это позволяет клиенту быстро понять, какой MCP-сервер отработал. Для `tool_use`-блоков без `__` в имени это поле не добавляется. Поведение верифицировано в `MCPConnectorPayloadTest::response_parser_tags_mcp_tool_use_blocks`.
+**Response contract.** For each `tool_use` block whose `name` has the form `<server_name>__<tool>`, the gateway adds `mcp_server_name: "<server_name>"` to the block — this lets the client tell at a glance which MCP server fired. For `tool_use` blocks without `__` in the name the field is not added. Behaviour is verified in `MCPConnectorPayloadTest::response_parser_tags_mcp_tool_use_blocks`.
 
-**Требование `allowed_features`.** Нужна фича `mcp_connector: true`. **CLI `php artisan client:enable-feature <id> mcp_connector` не поддерживает эту фичу — имя отсутствует в `ClientEnableFeature::KNOWN_FEATURES`. Активация — прямым обновлением JSON-колонки `allowed_features` у клиента. Подробности — §13.6.**
+**`allowed_features` requirement.** Requires `mcp_connector: true`. **The CLI `php artisan client:enable-feature <id> mcp_connector` does not support this feature — the name is missing from `ClientEnableFeature::KNOWN_FEATURES`. Activation — direct update of the client's JSON `allowed_features` column. Details — §13.6.**
 
-**Beta-header.** При непустом `mcp_servers` шлюз автоматически добавляет `anthropic-beta: mcp-client-2025-11-20` (`config/llm.php → claude.beta_headers.mcp_client`; логика — `PayloadBuilder::detectBetaFeatures` через `hasMcpServers`).
+**Beta header.** When `mcp_servers` is non-empty, the gateway adds `anthropic-beta: mcp-client-2025-11-20` automatically (`config/llm.php → claude.beta_headers.mcp_client`; logic — `PayloadBuilder::detectBetaFeatures` via `hasMcpServers`).
 
-**Несовместимости.** В контексте Batch API (элемент `/api/v1/batches`) MCP не поддерживается контрактом Anthropic. Валидатор шлюза не блокирует это специальной ошибкой, но использовать `mcp_servers` внутри batch не следует — поведение upstream не гарантировано.
+**Incompatibilities.** Inside the Batch API (`/api/v1/batches` item) MCP is not supported by Anthropic's contract. The gateway validator does not block it with a dedicated error, but `mcp_servers` should not be used inside batches — upstream behaviour is not guaranteed.
 
-**Безопасность.**
+**Security.**
 
-- `authorization_token` **маскируется в логах шлюза** как `[REDACTED]` через `PayloadMasker::mask`. На upstream в Anthropic токен уходит в исходном виде — иначе авторизация на MCP-сервере не пройдёт; шлюз не вырезает его из запроса.
-- При использовании MCP внутри sessions шлюз хранит `authorization_token` в БД зашифрованным. Подробности session-интеграции выходят за рамки этой секции.
+- `authorization_token` is **masked in gateway logs** as `[REDACTED]` via `PayloadMasker::mask`. The token is forwarded to Anthropic upstream as is — otherwise authorization on the MCP server would fail; the gateway does not strip it from the request.
+- When MCP is used inside sessions, the gateway stores `authorization_token` encrypted in the database. Session integration details are out of scope for this section.
 
-**Коды ошибок.**
+**Error codes.**
 
-| HTTP | `error.type` | Триггер |
+| HTTP | `error.type` | Trigger |
 |------|-------------|---------|
-| 400 | `mcp_connector_not_enabled` | `mcp_servers` непустой, фича `mcp_connector` выключена. |
-| 400 | `invalid_request_error` | Нарушение JSON-схемы элемента `mcp_servers[]` (`type`, `url`, `name`) — сообщение формируется валидатором схемы. |
+| 400 | `mcp_connector_not_enabled` | `mcp_servers` is non-empty, the `mcp_connector` feature is off. |
+| 400 | `invalid_request_error` | `mcp_servers[]` element schema violation (`type`, `url`, `name`) — message is produced by the schema validator. |
 
-#### Примеры `curl`
+#### `curl` examples
 
-Успешный запрос с подключённым MCP-сервером.
+Successful request with an MCP server attached.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
@@ -1766,16 +1785,16 @@ curl -X POST https://gateway.example.com/api/v1/messages \
       }
     ],
     "messages": [
-      {"role": "user", "content": "Найди в нашей документации, как настраивается retry для webhook."}
+      {"role": "user", "content": "Find in our documentation how webhook retry is configured."}
     ]
   }'
 ```
 
-Тот же запрос для клиента без фичи `mcp_connector` отклоняется.
+The same request for a client without the `mcp_connector` feature is rejected.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
@@ -1784,7 +1803,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
       {"type": "url", "url": "https://mcp.example.com/sse", "name": "docs_search"}
     ],
     "messages": [
-      {"role": "user", "content": "Тест"}
+      {"role": "user", "content": "Test"}
     ]
   }'
 ```
@@ -1801,55 +1820,55 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 
 ### 13.4 Service tier
 
-**Назначение.** Выбор priority-пула пропускной способности Anthropic, когда он доступен. Типовой сценарий — критичные продакшен-потоки, в которых задержка постановки запроса в очередь важнее стоимости.
+**Purpose.** Pick Anthropic's priority throughput pool when available. Typical scenario — critical production traffic where queue latency matters more than cost.
 
-**Параметр payload.** Поле `service_tier` в `POST /api/v1/messages`. Допустимые значения — enum `App\Components\Validation\Enums\ServiceTier`:
+**Payload parameter.** The `service_tier` field in `POST /api/v1/messages`. Allowed values — enum `App\Components\Validation\Enums\ServiceTier`:
 
-- `"standard_only"` — значение по умолчанию (`config/llm.php → claude.service_tier.default`);
-- `"auto"` — попросить priority с прозрачным откатом на standard, если priority-пул недоступен.
+- `"standard_only"` — default value (`config/llm.php → claude.service_tier.default`);
+- `"auto"` — request priority with transparent fallback to standard if the priority pool is unavailable.
 
-**Важно.** Любое другое значение — включая строку `"priority"` — отклоняется валидатором как `400 service_tier_invalid`. Строка `"priority"` встречается только как значение response-заголовка (см. ниже) и **не является валидным client-side вводом**.
+**Important.** Any other value — including the string `"priority"` — is rejected by the validator with `400 service_tier_invalid`. The string `"priority"` appears only as a value of the response header (see below) and is **not a valid client-side input**.
 
-**Требование `allowed_features`.** Для `standard_only` активация не нужна. Для `"auto"` — требуется фича `priority_tier: true`. В отличие от `skills` / `fast_mode` / `mcp_connector`, фича `priority_tier` входит в `ClientEnableFeature::KNOWN_FEATURES`, поэтому её можно включить стандартным CLI:
+**`allowed_features` requirement.** No activation needed for `standard_only`. For `"auto"` — the `priority_tier: true` feature is required. Unlike `skills` / `fast_mode` / `mcp_connector`, the `priority_tier` feature is in `ClientEnableFeature::KNOWN_FEATURES`, so it can be enabled with the standard CLI:
 
 ```bash
 php artisan client:enable-feature <client_id> priority_tier
 ```
 
-Подробности — §13.6.
+Details — §13.6.
 
-**Response-заголовок `X-Gateway-Service-Tier-Used`.** Выставляется шлюзом в sync-ответах (`SyncResponder`) по значению, которое вернул Anthropic. Возможные состояния:
+**Response header `X-Gateway-Service-Tier-Used`.** Set by the gateway in sync responses (`SyncResponder`) to the value Anthropic returned. Possible states:
 
-| Значение | Смысл |
+| Value | Meaning |
 |----------|-------|
-| `standard` | Anthropic применил standard-тариф (в т. ч. откат при `auto`). |
-| `priority` | Anthropic применил priority. |
-| *(отсутствует)* | В ответе апстрима нет поля `service_tier` (например, в части streaming-чанков). |
+| `standard` | Anthropic applied the standard tier (including fallback under `auto`). |
+| `priority` | Anthropic applied priority. |
+| *(absent)* | The upstream response has no `service_tier` field (for example in some streaming chunks). |
 
-**Ценообразование.** Если `X-Gateway-Service-Tier-Used === "priority"`, к стоимости `input`- и `output`-токенов применяется множитель `config/llm.php → claude.service_tier.priority_multiplier` (сейчас `1.0`, т. е. без наценки; значение может измениться в будущем). К cache-токенам множитель **не применяется**. Базовые ставки за 1M токенов — см. §14. Выбор модели → «Стоимость за 1M токенов».
+**Pricing.** When `X-Gateway-Service-Tier-Used === "priority"`, input and output token costs are multiplied by `config/llm.php → claude.service_tier.priority_multiplier` (currently `1.0`, i.e. no surcharge; the value may change in the future). The multiplier **does not apply** to cache tokens. Base rates per 1M tokens — see §14. Choosing a model → "Cost per 1M tokens".
 
-**Несовместимости.**
+**Incompatibilities.**
 
-- `service_tier: "auto"` + `speed: "fast"` → `400 fast_mode_priority_incompatible` (см. §13.2).
-- Batch-контекст: шлюз **не запрещает** `service_tier: "auto"` внутри элемента batch, но фактическая применимость priority в Batch API определяется контрактом Anthropic. На практике на priority в batch-пайплайнах полагаться не стоит — см. документацию Anthropic Batch API.
+- `service_tier: "auto"` + `speed: "fast"` → `400 fast_mode_priority_incompatible` (see §13.2).
+- Batch context: the gateway **does not block** `service_tier: "auto"` inside a batch item, but the actual applicability of priority in Batch API is governed by Anthropic's contract. In practice, do not rely on priority in batch pipelines — see Anthropic Batch API documentation.
 
-**Beta-header.** Для этой фичи beta-header не требуется и шлюзом не добавляется — `service_tier` является first-class параметром Anthropic API.
+**Beta header.** This feature does not need a beta header and the gateway does not add one — `service_tier` is a first-class Anthropic API parameter.
 
-**Коды ошибок.**
+**Error codes.**
 
-| HTTP | `error.type` | Триггер |
+| HTTP | `error.type` | Trigger |
 |------|-------------|---------|
-| 400 | `service_tier_invalid` | Значение `service_tier` не входит в enum (`standard_only`, `auto`); сюда попадает и строка `"priority"`. |
-| 400 | `priority_tier_not_enabled` | `service_tier: "auto"` при выключенной фиче `priority_tier`. |
-| 400 | `fast_mode_priority_incompatible` | `service_tier: "auto"` + `speed: "fast"` (см. §13.2). |
+| 400 | `service_tier_invalid` | `service_tier` value is not in the enum (`standard_only`, `auto`); the string `"priority"` falls here too. |
+| 400 | `priority_tier_not_enabled` | `service_tier: "auto"` while the `priority_tier` feature is off. |
+| 400 | `fast_mode_priority_incompatible` | `service_tier: "auto"` + `speed: "fast"` (see §13.2). |
 
-#### Примеры `curl`
+#### `curl` examples
 
-Успешный запрос с priority на `claude-opus`. В ответе ожидается заголовок `X-Gateway-Service-Tier-Used: priority` (или `standard` при откате).
+Successful priority request on `claude-opus`. Expect `X-Gateway-Service-Tier-Used: priority` (or `standard` on fallback) in the response.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -i \
   -d '{
@@ -1857,23 +1876,23 @@ curl -X POST https://gateway.example.com/api/v1/messages \
     "max_tokens": 512,
     "service_tier": "auto",
     "messages": [
-      {"role": "user", "content": "Опиши кратко стратегию retry для идемпотентных операций."}
+      {"role": "user", "content": "Briefly describe a retry strategy for idempotent operations."}
     ]
   }'
 ```
 
-Тот же запрос у клиента без фичи `priority_tier` — `400 priority_tier_not_enabled`.
+The same request for a client without the `priority_tier` feature — `400 priority_tier_not_enabled`.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-opus",
     "max_tokens": 256,
     "service_tier": "auto",
     "messages": [
-      {"role": "user", "content": "Тест"}
+      {"role": "user", "content": "Test"}
     ]
   }'
 ```
@@ -1890,61 +1909,61 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 
 ### 13.5 Output 300k (`max_tokens` > 64 000)
 
-**Назначение.** Возможность запросить большой output у Claude: длинные отчёты, мульти-документная суммаризация, code-generation для крупных файлов, длинные batch-пайплайны.
+**Purpose.** Request a large output from Claude: long reports, multi-document summarisation, code generation for large files, long batch pipelines.
 
-**Параметр payload.** **Отдельного параметра нет.** Фича активируется автоматически, как только `max_tokens > 64 000` — шлюз сам добавляет соответствующий beta-header. В payload достаточно выставить нужный `max_tokens`.
+**Payload parameter.** **No dedicated parameter.** The feature engages automatically once `max_tokens > 64 000` — the gateway adds the matching beta header. In the payload, just set the desired `max_tokens`.
 
-**Лимиты по моделям.** Значения — из `config/llm.php → claude.model_capabilities` (`max_output` / `max_output_batch`).
+**Per-model limits.** Values come from `config/llm.php → claude.model_capabilities` (`max_output` / `max_output_batch`).
 
-| Модель | Sync `max_output` | Batch `max_output_batch` |
+| Model | Sync `max_output` | Batch `max_output_batch` |
 |--------|:-----------------:|:------------------------:|
 | `claude-opus` | 128K | 300K |
 | `claude-sonnet` | 64K | 300K |
 | `claude-haiku` | 64K | 64K |
 
-**Требование `allowed_features`.** Не требуется: это не клиентская фича, а capability модели. `allowed_features` при валидации `max_tokens` не проверяется.
+**`allowed_features` requirement.** Not required: this is a model capability, not a client feature. `allowed_features` is not consulted for `max_tokens` validation.
 
-**Beta-header.** При `max_tokens > 64 000` шлюз автоматически добавляет `anthropic-beta: output-300k-2026-03-24` (`config/llm.php → claude.beta_headers.output_300k`; логика — `PayloadBuilder::detectBetaFeatures`).
+**Beta header.** When `max_tokens > 64 000`, the gateway adds `anthropic-beta: output-300k-2026-03-24` automatically (`config/llm.php → claude.beta_headers.output_300k`; logic — `PayloadBuilder::detectBetaFeatures`).
 
-**Валидация.**
+**Validation.**
 
-- **Sync / sync streaming / async / sessions.** Если `max_tokens` превышает `max_output` модели, `PayloadBuilder::enforceMaxTokensCap` бросает `PayloadBuildException::invalidRequest`, рендерится как `400 invalid_request_error` с сообщением формата `max_tokens (N) exceeds model <alias> maximum output (M)`. Специализированного `error.type` у этой ошибки нет — это обычный `invalid_request_error`, спецификой служит `message`.
-- **Batch.** Если `max_tokens` превышает `max_output_batch` модели, `MessageRequestValidator::contextRulesCheck` добавляет ошибку `max_tokens_exceeds_batch_limit` с сообщением `max_tokens N exceeds batch limit M for <alias>`, HTTP 400.
+- **Sync / sync streaming / async / sessions.** When `max_tokens` exceeds the model's `max_output`, `PayloadBuilder::enforceMaxTokensCap` throws `PayloadBuildException::invalidRequest`, rendered as `400 invalid_request_error` with a message of the form `max_tokens (N) exceeds model <alias> maximum output (M)`. There is no specialised `error.type` for it — it is a regular `invalid_request_error`, the specifics live in `message`.
+- **Batch.** When `max_tokens` exceeds the model's `max_output_batch`, `MessageRequestValidator::contextRulesCheck` adds the error `max_tokens_exceeds_batch_limit` with the message `max_tokens N exceeds batch limit M for <alias>`, HTTP 400.
 
-**Несовместимости.**
+**Incompatibilities.**
 
-- `claude-haiku` не поддерживает output > 64K даже в batch (общий лимит 64 000).
-- `claude-sonnet` в sync-контексте ограничен 64K — большой output на Sonnet доступен только через Batch API (лимит 300K).
+- `claude-haiku` does not support output > 64K even in batch (overall limit 64 000).
+- `claude-sonnet` in sync context is capped at 64K — large output on Sonnet is available only via Batch API (limit 300K).
 
-**Коды ошибок.**
+**Error codes.**
 
-| HTTP | `error.type` | Контекст | Триггер |
+| HTTP | `error.type` | Context | Trigger |
 |------|-------------|----------|---------|
-| 400 | `invalid_request_error` (без специального типа) | sync / stream / async / session | `max_tokens` > `max_output` модели. |
-| 400 | `max_tokens_exceeds_batch_limit` | batch | `max_tokens` > `max_output_batch` модели. |
+| 400 | `invalid_request_error` (no specialised type) | sync / stream / async / session | `max_tokens` > model `max_output`. |
+| 400 | `max_tokens_exceeds_batch_limit` | batch | `max_tokens` > model `max_output_batch`. |
 
-#### Примеры `curl`
+#### `curl` examples
 
-Успешный sync-запрос на `claude-opus` с output до 120 000 токенов.
+Successful sync request on `claude-opus` with up to 120 000 output tokens.
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-opus",
     "max_tokens": 120000,
     "messages": [
-      {"role": "user", "content": "Сгенерируй детальный технический отчёт объёмом около 100K токенов."}
+      {"role": "user", "content": "Generate a detailed technical report of about 100K tokens."}
     ]
   }'
 ```
 
-Успешный batch-запрос на `claude-sonnet` с элементами до 250 000 токенов (полная структура batch-envelope — см. §7. Batch API).
+Successful batch request on `claude-sonnet` with items up to 250 000 tokens (full batch envelope structure — see §7. Batch API).
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/batches \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "requests": [
@@ -1954,7 +1973,7 @@ curl -X POST https://gateway.example.com/api/v1/batches \
           "model": "claude-sonnet",
           "max_tokens": 250000,
           "messages": [
-            {"role": "user", "content": "Собери мульти-документный отчёт..."}
+            {"role": "user", "content": "Build a multi-document report..."}
           ]
         }
       }
@@ -1962,17 +1981,17 @@ curl -X POST https://gateway.example.com/api/v1/batches \
   }'
 ```
 
-Ошибочный sync-запрос на `claude-haiku` с `max_tokens: 100000` (лимит 64K).
+Failed sync request on `claude-haiku` with `max_tokens: 100000` (limit 64K).
 
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-haiku",
     "max_tokens": 100000,
     "messages": [
-      {"role": "user", "content": "Тест"}
+      {"role": "user", "content": "Test"}
     ]
   }'
 ```
@@ -1987,28 +2006,28 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 }
 ```
 
-### 13.6 Справочник `allowed_features`
+### 13.6 `allowed_features` reference
 
-**Концепция.** `allowed_features` — JSON-колонка в таблице `clients`, словарь вида `<feature_key> → bool`. Она определяет, какие gated-возможности разрешены конкретному клиенту. В той же колонке могут жить и специальные ключи (например, `models` — whitelist алиасов), но эта секция ограничена dimension'ом feature-flag.
+**Concept.** `allowed_features` is a JSON column on the `clients` table, a dictionary of `<feature_key> → bool`. It defines which gated capabilities are permitted for a specific client. The same column may host special keys (for example `models` — alias whitelist), but this section is limited to the feature-flag dimension.
 
-#### Включение/выключение через CLI
+#### Enable/disable through CLI
 
 ```bash
 php artisan client:enable-feature {client_id} {feature}
 php artisan client:disable-feature {client_id} {feature}
 ```
 
-Обе команды знают ровно 11 ключей (порядок — как в `ClientEnableFeature::KNOWN_FEATURES`):
+Both commands recognise exactly 11 keys (order — as in `ClientEnableFeature::KNOWN_FEATURES`):
 
 `thinking`, `web_search`, `code_execution`, `computer_use`, `bash`, `text_editor`, `priority_tier`, `citations`, `prompt_caching`, `structured_outputs`, `batch`.
 
-Любое другое имя команда отклонит с сообщением `Unknown feature` и FAILURE exit-кодом.
+Any other name is rejected with `Unknown feature` and a FAILURE exit code.
 
-#### Фичи вне CLI
+#### Features outside CLI
 
-**Следующие feature-keys проверяются шлюзом во время выполнения, но текущие команды `client:enable-feature` / `client:disable-feature` их не знают — они включаются только прямым обновлением JSON-колонки `allowed_features` у записи клиента (через `php artisan tinker` или SQL-миграцию): `mcp_connector`, `fast_mode`, `skills`, `web_fetch`, `tool_search`, `memory`, `inference_geo_override`, `allow_raw_anthropic_file_ids`.**
+**The following feature keys are checked by the gateway at runtime, but the current `client:enable-feature` / `client:disable-feature` commands do not know them — they are enabled only by direct update of the JSON `allowed_features` column on the client record (via `php artisan tinker` or an SQL migration): `mcp_connector`, `fast_mode`, `skills`, `web_fetch`, `tool_search`, `memory`, `inference_geo_override`, `allow_raw_anthropic_file_ids`.**
 
-Пример включения фичи через `tinker`:
+Example of enabling a feature through `tinker`:
 
 ```bash
 php artisan tinker
@@ -2023,68 +2042,68 @@ $client->update([
 ]);
 ```
 
-#### По умолчанию разрешены
+#### Allowed by default
 
-`Authorization::DEFAULT_ALLOW_FEATURES` неявно включает две фичи, если ключ в `allowed_features` отсутствует:
+`Authorization::DEFAULT_ALLOW_FEATURES` implicitly enables two features when the key is missing from `allowed_features`:
 
 - `prompt_caching`
 - `citations`
 
-Для всех остальных ключей отсутствие значения = deny.
+For all other keys, missing value = deny.
 
-#### Сводная таблица
+#### Summary table
 
-| Ключ | Для чего | Как включить | Ошибка при отсутствии |
+| Key | Purpose | How to enable | Error when missing |
 |------|----------|-------------|----------------------|
 | `thinking` | Extended/adaptive thinking (§15) | CLI | `403 permission_error` |
 | `web_search` | Server-tool `web_search` (§9) | CLI | `403 permission_error` |
-| `web_fetch` | Server-tool `web_fetch` (§9) | прямое обновление `allowed_features` | `403 permission_error` |
-| `code_execution` | Server-tool `code_execution*` (§9) | CLI | `403 permission_error`; при превышении free-hours — `429 quota_exhausted` |
+| `web_fetch` | Server-tool `web_fetch` (§9) | direct update of `allowed_features` | `403 permission_error` |
+| `code_execution` | Server-tool `code_execution*` (§9) | CLI | `403 permission_error`; exceeding free-hours — `429 quota_exhausted` |
 | `computer_use` | Server-tool `computer` (§9) | CLI | `403 permission_error` |
 | `bash` | Server-tool `bash` (§9) | CLI | `403 permission_error` |
 | `text_editor` | Server-tool `text_editor` (§9) | CLI | `403 permission_error` |
-| `tool_search` | Server-tool `tool_search_*` (§9) | прямое обновление `allowed_features` | `403 permission_error` |
-| `memory` | Server-tool `memory` (§9) | прямое обновление `allowed_features` | `403 permission_error` |
+| `tool_search` | Server-tool `tool_search_*` (§9) | direct update of `allowed_features` | `403 permission_error` |
+| `memory` | Server-tool `memory` (§9) | direct update of `allowed_features` | `403 permission_error` |
 | `priority_tier` | `service_tier: "auto"` (§13.4) | CLI | `400 priority_tier_not_enabled` |
-| `fast_mode` | `speed: "fast"` (§13.2) | прямое обновление `allowed_features` | `400 fast_mode_not_enabled` |
-| `mcp_connector` | `mcp_servers` (§13.3) | прямое обновление `allowed_features` | `400 mcp_connector_not_enabled` |
-| `skills` | `/api/v1/skills/*` и поле `skills` в `/messages` (§13.1) | прямое обновление `allowed_features` | Skills API: `POST /skills` → `403 skill_creation_failed`, `GET /skills` → `403 skills_list_failed`, `DELETE /skills/{id}` → `403 skill_delete_failed`; `GET /skills/{id}` фичу не проверяет и для неизвестного id вернёт `404 skill_not_found`; `/messages` payload: `400 skills_not_enabled` |
-| `citations` | Citations в ответах | CLI (включена по умолчанию; отключается `disable-feature`) | `403 permission_error` |
-| `prompt_caching` | Prompt caching (§12) | CLI (включена по умолчанию; отключается `disable-feature`) | — (явной ошибки нет; кэш просто не активируется) |
-| `structured_outputs` | `output_config` с JSON Schema | CLI | `403 permission_error` |
-| `batch` | Доступ к Batch API (§7) | CLI | `403 permission_error` |
-| `inference_geo_override` | Переопределение `inference_geo` в payload клиента | прямое обновление `allowed_features` | `400 invalid_request_error` (нарушение inference_geo в `PayloadBuilder`) |
-| `allow_raw_anthropic_file_ids` | Использование Anthropic file_id напрямую, минуя gateway files | прямое обновление `allowed_features` | Ошибка резолвинга file source: `Unknown file ID format. Use gateway file IDs or enable allow_raw_anthropic_file_ids.` |
+| `fast_mode` | `speed: "fast"` (§13.2) | direct update of `allowed_features` | `400 fast_mode_not_enabled` |
+| `mcp_connector` | `mcp_servers` (§13.3) | direct update of `allowed_features` | `400 mcp_connector_not_enabled` |
+| `skills` | `/api/v1/skills/*` and `skills` field in `/messages` (§13.1) | direct update of `allowed_features` | Skills API: `POST /skills` → `403 skill_creation_failed`, `GET /skills` → `403 skills_list_failed`, `DELETE /skills/{id}` → `403 skill_delete_failed`; `GET /skills/{id}` does not check the feature and returns `404 skill_not_found` for an unknown id; `/messages` payload: `400 skills_not_enabled` |
+| `citations` | Citations in responses | CLI (enabled by default; disable with `disable-feature`) | `403 permission_error` |
+| `prompt_caching` | Prompt caching (§12) | CLI (enabled by default; disable with `disable-feature`) | — (no explicit error; cache simply does not activate) |
+| `structured_outputs` | `output_config` with JSON Schema | CLI | `403 permission_error` |
+| `batch` | Access to Batch API (§7) | CLI | `403 permission_error` |
+| `inference_geo_override` | Override `inference_geo` in client payload | direct update of `allowed_features` | `400 invalid_request_error` (inference_geo violation in `PayloadBuilder`) |
+| `allow_raw_anthropic_file_ids` | Use Anthropic file_id directly, bypassing gateway files | direct update of `allowed_features` | File source resolution error: `Unknown file ID format. Use gateway file IDs or enable allow_raw_anthropic_file_ids.` |
 
-#### Три ветки ошибок при отсутствии фичи
+#### Three error branches when a feature is missing
 
-- **Server-tool feature check.** `ServerFeaturesRule` → `FeatureNotAllowedException` → `bootstrap/app.php` → HTTP 403 `permission_error`. Применяется к серверным инструментам из §9.
-- **Payload-level validator check.** `MessageRequestValidator::phase4Rules` формирует `ValidationError` для payload-полей `priority_tier`, `fast_mode`, `mcp_connector`, `skills` → HTTP 400 `invalid_request_error` с конкретным `error.type` (`priority_tier_not_enabled`, `fast_mode_not_enabled`, `mcp_connector_not_enabled`, `skills_not_enabled`).
-- **Skills API enablement check.** `SkillsOrchestrator::assertSkillsEnabled` бросает `RuntimeException` с кодом 403, но **`SkillsController` сам ловит это исключение** и возвращает HTTP 403 с эндпоинт-специфичным `error.type`: `skill_creation_failed` (`POST /skills`), `skills_list_failed` (`GET /skills`), `skill_delete_failed` (`DELETE /skills/{id}`). Это **не `invalid_request_error` и не `permission_error`** — исключение не доходит до глобального рендера в `bootstrap/app.php`. Карвейт-аут: `GET /skills/{id}` в этой ветке **не участвует** — метод `show` не вызывает `assertSkillsEnabled`, и для клиента без фичи результатом будет `404 skill_not_found`, а не 403.
+- **Server-tool feature check.** `ServerFeaturesRule` → `FeatureNotAllowedException` → `bootstrap/app.php` → HTTP 403 `permission_error`. Applies to server-side tools from §9.
+- **Payload-level validator check.** `MessageRequestValidator::phase4Rules` produces a `ValidationError` for payload fields `priority_tier`, `fast_mode`, `mcp_connector`, `skills` → HTTP 400 `invalid_request_error` with a specific `error.type` (`priority_tier_not_enabled`, `fast_mode_not_enabled`, `mcp_connector_not_enabled`, `skills_not_enabled`).
+- **Skills API enablement check.** `SkillsOrchestrator::assertSkillsEnabled` throws a `RuntimeException` with code 403, but **`SkillsController` catches the exception itself** and returns HTTP 403 with an endpoint-specific `error.type`: `skill_creation_failed` (`POST /skills`), `skills_list_failed` (`GET /skills`), `skill_delete_failed` (`DELETE /skills/{id}`). This is **neither `invalid_request_error` nor `permission_error`** — the exception never reaches the global renderer in `bootstrap/app.php`. Carve-out: `GET /skills/{id}` is not part of this branch — `show` does not call `assertSkillsEnabled`, and for a client without the feature the result is `404 skill_not_found`, not 403.
 
-#### Квота `code_execution`
+#### `code_execution` quota
 
-Помимо обычного deny-check, для серверного инструмента `code_execution` действует ограничение «бесплатных часов» в месяц — `config/llm.php → claude.pricing.server_tools.code_execution_free_hours_per_month` (сейчас `1550`). При исчерпании квоты `CodeExecutionUsageTracker` поднимает `FeatureQuotaExhaustedException`, который рендерится как `429 quota_exhausted`.
+In addition to the regular deny check, the `code_execution` server tool has a "free hours per month" cap — `config/llm.php → claude.pricing.server_tools.code_execution_free_hours_per_month` (currently `1550`). When the quota is exhausted, `CodeExecutionUsageTracker` raises `FeatureQuotaExhaustedException`, rendered as `429 quota_exhausted`.
 
 ---
 
-## 14. Выбор модели
+## 14. Choosing a model
 
-### Сравнение моделей
+### Model comparison
 
-| Характеристика | claude-opus | claude-sonnet | claude-haiku |
+| Capability | claude-opus | claude-sonnet | claude-haiku |
 |---------------|:-----------:|:-------------:|:------------:|
 | Snapshot | claude-opus-4-6 | claude-sonnet-4-6 | claude-haiku-4-5 |
-| Контекстное окно | 1M | 1M | 200K |
-| Макс. выход | 128K | 64K | 64K |
-| Макс. выход (batch) | 300K | 300K | 64K |
-| Adaptive thinking | да | да | нет |
-| Compaction | да | да | нет |
-| Prefill | нет | да | да |
-| Fast mode | да | нет | нет |
+| Context window | 1M | 1M | 200K |
+| Max output | 128K | 64K | 64K |
+| Max output (batch) | 300K | 300K | 64K |
+| Adaptive thinking | yes | yes | no |
+| Compaction | yes | yes | no |
+| Prefill | no | yes | yes |
+| Fast mode | yes | no | no |
 | Min cache tokens | 1024 | 1024 | 2048 |
 
-### Стоимость за 1M токенов
+### Cost per 1M tokens
 
 | | Input | Output | Cache write (5m) | Cache write (1h) | Cache read | Batch input | Batch output |
 |-|:-----:|:------:|:----------------:|:----------------:|:----------:|:-----------:|:------------:|
@@ -2092,38 +2111,38 @@ $client->update([
 | sonnet | $3.00 | $15.00 | $3.75 | $6.00 | $0.30 | $1.50 | $7.50 |
 | haiku | $1.00 | $5.00 | $1.25 | $2.00 | $0.10 | $0.50 | $2.50 |
 
-Fast mode (только opus): множитель 6.0x к стоимости.
+Fast mode (opus only): 6.0x multiplier on cost.
 
-### Рекомендации по выбору
+### Selection guidance
 
-**claude-opus** -- сложные задачи: исследования, глубокий анализ, творческое письмо, задачи требующие длинного рассуждения. Максимальный объем выхода. Fast mode для приоритетной обработки.
+**claude-opus** — complex tasks: research, deep analysis, creative writing, jobs that need long reasoning. Maximum output volume. Fast mode for priority handling.
 
-**claude-sonnet** -- оптимальный баланс цена/качество. Программирование, суммаризация, аналитика, чат-боты. Модель по умолчанию.
+**claude-sonnet** — best price/quality trade-off. Programming, summarisation, analytics, chatbots. Default model.
 
-**claude-haiku** -- быстрые и дешевые задачи: классификация, извлечение данных, простые ответы, фильтрация. Контекст 200K.
+**claude-haiku** — fast, cheap tasks: classification, data extraction, simple answers, filtering. 200K context.
 
 ---
 
 ## 15. Adaptive thinking
 
-Adaptive thinking (extended thinking) позволяет модели "думать" перед ответом, выделяя отдельный блок рассуждений.
+Adaptive thinking (extended thinking) lets the model "think" before answering, emitting a separate reasoning block.
 
-### Поддерживаемые модели
+### Supported models
 
 - claude-opus
 - claude-sonnet
 
-claude-haiku НЕ поддерживает adaptive thinking.
+claude-haiku does NOT support adaptive thinking.
 
-### Уровни усилий
+### Effort levels
 
-| Уровень | Описание |
+| Level | Description |
 |---------|----------|
-| `low` | Минимальное размышление, быстрые ответы |
-| `medium` | Умеренное размышление (по умолчанию) |
-| `high` | Глубокое размышление для сложных задач |
+| `low` | Minimal reasoning, fast answers |
+| `medium` | Moderate reasoning (default) |
+| `high` | Deep reasoning for complex tasks |
 
-### Активация
+### Activation
 
 ```json
 {
@@ -2134,62 +2153,62 @@ claude-haiku НЕ поддерживает adaptive thinking.
     "budget_tokens": 10000
   },
   "messages": [
-    {"role": "user", "content": "Реши эту задачу по математике: ..."}
+    {"role": "user", "content": "Solve this math problem: ..."}
   ]
 }
 ```
 
-### Ответ с thinking
+### Response with thinking
 
 ```json
 {
   "content": [
     {
       "type": "thinking",
-      "thinking": "Давайте разберем задачу по шагам..."
+      "thinking": "Break the problem down step by step..."
     },
     {
       "type": "text",
-      "text": "Ответ: 42. Вот объяснение..."
+      "text": "Answer: 42. Here is the reasoning..."
     }
   ]
 }
 ```
 
-Блок `thinking` содержит внутренние рассуждения модели. Токены thinking учитываются в output.
+The `thinking` block carries the model's internal reasoning. Thinking tokens are counted as output.
 
-### Потоковая передача thinking
+### Streaming thinking
 
-При `stream: true` блоки thinking передаются через `content_block_start` и `content_block_delta` событий с `type: "thinking"`.
+With `stream: true`, thinking blocks are delivered through `content_block_start` and `content_block_delta` events with `type: "thinking"`.
 
 ---
 
-## 16. Compaction для длинных сессий
+## 16. Compaction for long sessions
 
-Compaction -- автоматическое сжатие истории диалога при приближении к лимиту контекстного окна.
+Compaction is automatic compression of dialogue history as it approaches the context-window limit.
 
-### Поддерживаемые модели
+### Supported models
 
 - claude-opus
 - claude-sonnet
 
-claude-haiku НЕ поддерживает compaction.
+claude-haiku does NOT support compaction.
 
-### Как работает
+### How it works
 
-Когда суммарный размер контекста приближается к лимиту окна, gateway автоматически активирует compaction:
+When the cumulative context approaches the window limit, the gateway triggers compaction:
 
-1. Ранние сообщения сжимаются в краткое саммари.
-2. Саммари помещается в начало контекста вместо оригинальных сообщений.
-3. Недавние сообщения остаются без изменений.
+1. Early messages are condensed into a short summary.
+2. The summary replaces the original messages at the start of the context.
+3. Recent messages stay untouched.
 
-### Что получает клиент
+### What the client sees
 
-При использовании sessions клиент получает заголовок `X-Gateway-Warning: auto_resume_limit_reached`, сигнализирующий об активации compaction. Ответ при этом приходит стандартный -- compaction прозрачен для клиента.
+When using sessions, the client receives `X-Gateway-Warning: auto_resume_limit_reached` to signal compaction. The response itself is standard — compaction is transparent to the client.
 
-### Активация через API
+### Activation through API
 
-Compaction можно включить явно через beta-заголовок:
+Compaction can be requested explicitly through a beta header:
 
 ```json
 {
@@ -2203,15 +2222,15 @@ Compaction можно включить явно через beta-заголово
 }
 ```
 
-Gateway автоматически добавляет необходимые beta-заголовки для compaction.
+The gateway adds the necessary beta headers for compaction automatically.
 
 ---
 
-## 17. Обработка ошибок
+## 17. Error handling
 
-Формат ошибок gateway полностью совместим с Anthropic API. Классы ошибок SDK (`anthropic.BadRequestError`, `anthropic.AuthenticationError` и т.д.) работают без изменений.
+Gateway error format is fully compatible with the Anthropic API. SDK error classes (`anthropic.BadRequestError`, `anthropic.AuthenticationError`, etc.) work as is.
 
-### Формат ошибки
+### Error format
 
 ```json
 {
@@ -2223,41 +2242,45 @@ Gateway автоматически добавляет необходимые bet
 }
 ```
 
-### Коды ошибок
+### Error codes
 
-| HTTP | Тип | Описание | Рекомендация |
+| HTTP | Type | Description | Recommendation |
 |:----:|-----|----------|-------------|
-| 400 | `invalid_request_error` | Невалидный запрос (формат, параметры, snapshot-имя модели) | Исправить запрос |
-| 401 | `authentication_error` | Невалидный или отсутствующий API-ключ | Проверить ключ |
-| 402 | `billing_error` | Бюджет исчерпан | Пополнить бюджет |
-| 403 | `permission_error` | Нет доступа к ресурсу | Проверить права |
-| 404 | `not_found_error` | Ресурс не найден | Проверить ID |
-| 429 | `rate_limit_error` | Превышен rate limit | Подождать и повторить |
-| 500 | `api_error` | Внутренняя ошибка gateway | Повторить позже |
-| 502 | `api_error` | Ошибка upstream (Anthropic) | Повторить позже |
-| 503 | `overloaded_error` | Сервис перегружен | Exponential backoff |
-| 504 | `timeout_error` | Таймаут запроса | Повторить или уменьшить max_tokens |
+| 400 | `invalid_request_error` | Invalid request (format, parameters, snapshot model name) | Fix the request |
+| 401 | `authentication_error` | Invalid or missing API key | Verify the key |
+| 402 | `billing_error` | Budget exhausted | Top up the budget |
+| 403 | `permission_error` | No access to the resource | Check permissions |
+| 404 | `not_found_error` | Resource not found | Verify the id |
+| 429 | `rate_limit_error` | Rate limit exceeded | Wait and retry |
+| 500 | `api_error` | Internal gateway error | Retry later |
+| 502 | `api_error` | Upstream (Anthropic) error | Retry later |
+| 503 | `overloaded_error` | Service overloaded | Exponential backoff |
+| 504 | `timeout_error` | Request timeout | Retry or reduce max_tokens |
 
-### Рекомендации по retry
+### Retry guidance
 
-| Код | Retry | Стратегия |
+| Code | Retry | Strategy |
 |:---:|:-----:|-----------|
-| 400 | нет | Ошибка в запросе |
-| 401 | нет | Проблема с аутентификацией |
-| 402 | нет | Проблема с биллингом |
-| 429 | да | Exponential backoff, учитывать `retry-after` |
-| 500 | да | До 3 попыток с backoff |
-| 502 | да | До 3 попыток с backoff |
-| 503 | да | Exponential backoff, начиная с 5 секунд |
-| 504 | да | Увеличить timeout или уменьшить задачу |
+| 400 | no | Bad request |
+| 401 | no | Authentication issue |
+| 402 | no | Billing issue |
+| 429 | yes | Exponential backoff, honour `retry-after` |
+| 500 | yes | Up to 3 attempts with backoff |
+| 502 | yes | Up to 3 attempts with backoff |
+| 503 | yes | Exponential backoff, start at 5 seconds |
+| 504 | yes | Increase timeout or shrink the task |
 
-### Совместимость с SDK
+### Gateway 529 retry behaviour
+
+The gateway transparently retries `529 overloaded_error` responses from Anthropic. Clients never see HTTP 529 unless Anthropic remains overloaded after `CLAUDE_HTTP_RETRY_MAX_ATTEMPTS` attempts (default 3); in that case the response surfaces as a transient failure with `error.type=api_error` and `Retry-After` set to the upstream value.
+
+### SDK compatibility
 
 ```python
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2265,56 +2288,87 @@ try:
     message = client.messages.create(
         model="claude-sonnet",
         max_tokens=1024,
-        messages=[{"role": "user", "content": "Привет!"}],
+        messages=[{"role": "user", "content": "Hello!"}],
     )
 except anthropic.BadRequestError as e:
-    print(f"Невалидный запрос: {e.message}")
+    print(f"Bad request: {e.message}")
 except anthropic.AuthenticationError:
-    print("Проверьте API-ключ")
+    print("Check the API key")
 except anthropic.RateLimitError:
-    print("Rate limit, повторите позже")
+    print("Rate limit, retry later")
 except anthropic.APIStatusError as e:
-    print(f"Ошибка API: {e.status_code} {e.message}")
+    print(f"API error: {e.status_code} {e.message}")
 ```
 
 ---
 
-## 18. Rate limits
+## Rate limiting
 
-### Уровни ограничений
+The gateway enforces a per-client request budget in addition to Anthropic's workspace-level limits. The budget is independent per client — one client's traffic never affects another's.
 
-Gateway применяет rate limits на уровне API-ключа клиента. Лимит RPM (requests per minute) задается при создании клиента (по умолчанию 60).
+### Defaults and overrides
+- Default budget: **600 requests per minute per client**, configured by `GATEWAY_DEFAULT_RATE_LIMIT_PER_MINUTE` (see `config/llm.php` → `rate_limit.default_per_minute`).
+- Per-client override: administrators set `clients.rate_limit_rpm` via `client:create --rate-limit=<rpm>` or by direct DB update.
+- Bucket key: `client:<id>` — IP address is irrelevant.
 
-### Заголовки rate limit
+### Response headers on every `/v1/*` call
+| Header | Meaning |
+|---|---|
+| `X-RateLimit-Limit` | Maximum requests per minute for this client. |
+| `X-RateLimit-Remaining` | Requests left in the current window. |
+| `Retry-After` | Seconds to wait before the next request (only on 429). |
 
-Gateway пробрасывает стандартные заголовки Anthropic rate limit:
+### 429 response body
+```json
+{
+  "error": {
+    "type": "rate_limit_error",
+    "message": "Request rate limit exceeded. Retry after the time indicated by the Retry-After header."
+  }
+}
+```
 
-| Заголовок | Описание |
+### Recommendation
+Back off using the `Retry-After` value. Do not hard-code retry intervals — the value reflects actual remaining window time.
+
+---
+
+## 18. Anthropic rate limits
+
+### Limit tiers
+
+The gateway also surfaces Anthropic-side limits. Per-client RPM (requests per minute) is set at client creation (default 60).
+
+### Rate-limit headers
+
+The gateway forwards Anthropic's standard rate-limit headers:
+
+| Header | Description |
 |-----------|----------|
-| `anthropic-ratelimit-requests-limit` | Лимит запросов |
-| `anthropic-ratelimit-requests-remaining` | Оставшиеся запросы |
-| `anthropic-ratelimit-requests-reset` | Время сброса |
-| `anthropic-ratelimit-tokens-limit` | Лимит токенов |
-| `anthropic-ratelimit-tokens-remaining` | Оставшиеся токены |
-| `anthropic-ratelimit-tokens-reset` | Время сброса токенов |
+| `anthropic-ratelimit-requests-limit` | Request limit |
+| `anthropic-ratelimit-requests-remaining` | Requests remaining |
+| `anthropic-ratelimit-requests-reset` | Reset time |
+| `anthropic-ratelimit-tokens-limit` | Token limit |
+| `anthropic-ratelimit-tokens-remaining` | Tokens remaining |
+| `anthropic-ratelimit-tokens-reset` | Token reset time |
 
-Дополнительно gateway добавляет:
+The gateway adds:
 
-| Заголовок | Описание |
+| Header | Description |
 |-----------|----------|
-| `X-Gateway-Spend-Remaining-USD` | Оставшийся бюджет в USD (или `unlimited`) |
+| `X-Gateway-Spend-Remaining-USD` | Remaining budget in USD (or `unlimited`) |
 
-### Обработка 429
+### Handling 429
 
-При получении HTTP 429:
+When you receive HTTP 429:
 
-1. Прочитайте заголовок `retry-after` (если есть) -- количество секунд до разрешенного повтора.
-2. Если `retry-after` отсутствует, используйте exponential backoff: 1s, 2s, 4s, 8s, 16s.
-3. SDK автоматически обрабатывает retry для 429 (настраиваемо через `max_retries`).
+1. Read the `retry-after` header (if present) — seconds until a retry is allowed.
+2. If `retry-after` is absent, use exponential backoff: 1s, 2s, 4s, 8s, 16s.
+3. The SDK handles retries for 429 automatically (configurable through `max_retries`).
 
 ```python
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
     max_retries=3,
 )
@@ -2322,13 +2376,13 @@ client = anthropic.Anthropic(
 
 ### ITPM / OTPM
 
-Input Tokens Per Minute (ITPM) и Output Tokens Per Minute (OTPM) контролируются на стороне Anthropic. При их превышении Anthropic возвращает 429, который gateway пробрасывает клиенту. Использование prompt caching снижает эффективное потребление ITPM.
+Input Tokens Per Minute (ITPM) and Output Tokens Per Minute (OTPM) are controlled by Anthropic. When exceeded, Anthropic returns 429 and the gateway forwards it to the client. Prompt caching reduces effective ITPM consumption.
 
 ---
 
-## 19. Полные примеры
+## 19. Full examples
 
-### 18.1. Простой текстовый запрос
+### 18.1. Simple text request
 
 **Python SDK:**
 
@@ -2336,7 +2390,7 @@ Input Tokens Per Minute (ITPM) и Output Tokens Per Minute (OTPM) контрол
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2344,7 +2398,7 @@ message = client.messages.create(
     model="claude-sonnet",
     max_tokens=1024,
     messages=[
-        {"role": "user", "content": "Объясни разницу между TCP и UDP."}
+        {"role": "user", "content": "Explain the difference between TCP and UDP."}
     ],
 )
 
@@ -2357,12 +2411,12 @@ print(f"Tokens: {message.usage.input_tokens} in, {message.usage.output_tokens} o
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 1024,
     "messages": [
-      {"role": "user", "content": "Объясни разницу между TCP и UDP."}
+      {"role": "user", "content": "Explain the difference between TCP and UDP."}
     ]
   }'
 ```
@@ -2377,7 +2431,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2385,7 +2439,7 @@ with client.messages.stream(
     model="claude-sonnet",
     max_tokens=2048,
     messages=[
-        {"role": "user", "content": "Напиши пошаговый гайд по настройке Nginx."}
+        {"role": "user", "content": "Write a step-by-step guide to configuring Nginx."}
     ],
 ) as stream:
     for text in stream.text_stream:
@@ -2398,14 +2452,14 @@ print()
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -N \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 2048,
     "stream": true,
     "messages": [
-      {"role": "user", "content": "Напиши пошаговый гайд по настройке Nginx."}
+      {"role": "user", "content": "Write a step-by-step guide to configuring Nginx."}
     ]
   }'
 ```
@@ -2420,7 +2474,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2440,7 +2494,7 @@ message = client.messages.create(
                 },
                 {
                     "type": "text",
-                    "text": "Опиши, что изображено на графике.",
+                    "text": "Describe what is on the chart.",
                 },
             ],
         }
@@ -2455,7 +2509,7 @@ print(message.content[0].text)
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 1024,
@@ -2472,7 +2526,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
           },
           {
             "type": "text",
-            "text": "Опиши, что изображено на графике."
+            "text": "Describe what is on the chart."
           }
         ]
       }
@@ -2490,15 +2544,15 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
-# Загрузка файла
+# Upload the file
 with open("screenshot.png", "rb") as f:
     uploaded = client.files.upload(file=f)
 
-# Использование в запросе
+# Use it in a request
 message = client.messages.create(
     model="claude-sonnet",
     max_tokens=1024,
@@ -2515,7 +2569,7 @@ message = client.messages.create(
                 },
                 {
                     "type": "text",
-                    "text": "Что изображено на скриншоте?",
+                    "text": "What is on the screenshot?",
                 },
             ],
         }
@@ -2528,15 +2582,15 @@ print(message.content[0].text)
 **curl:**
 
 ```bash
-# Загрузка файла
+# Upload the file
 FILE_ID=$(curl -s -X POST https://gateway.example.com/api/v1/files \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -F "file=@screenshot.png" | jq -r '.id')
 
-# Использование в запросе
+# Use it in a request
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 1024,
@@ -2553,7 +2607,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
           },
           {
             "type": "text",
-            "text": "Что изображено на скриншоте?"
+            "text": "What is on the screenshot?"
           }
         ]
       }
@@ -2563,7 +2617,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 
 ---
 
-### 18.5. PDF-документ
+### 18.5. PDF document
 
 **Python SDK:**
 
@@ -2572,7 +2626,7 @@ import anthropic
 import base64
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2596,7 +2650,7 @@ message = client.messages.create(
                 },
                 {
                     "type": "text",
-                    "text": "Суммаризируй ключевые выводы этого отчета.",
+                    "text": "Summarise the key takeaways from this report.",
                 },
             ],
         }
@@ -2613,7 +2667,7 @@ PDF_BASE64=$(base64 -w 0 report.pdf)
 
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 4096,
@@ -2631,7 +2685,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
           },
           {
             "type": "text",
-            "text": "Суммаризируй ключевые выводы этого отчета."
+            "text": "Summarise the key takeaways from this report."
           }
         ]
       }
@@ -2650,25 +2704,25 @@ import anthropic
 import json
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
 tools = [
     {
         "name": "get_stock_price",
-        "description": "Получает текущую цену акции по тикеру.",
+        "description": "Returns the current stock price by ticker.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Тикер акции (напр. AAPL)"},
+                "ticker": {"type": "string", "description": "Stock ticker (e.g. AAPL)"},
             },
             "required": ["ticker"],
         },
     }
 ]
 
-messages = [{"role": "user", "content": "Какая сейчас цена акций Apple?"}]
+messages = [{"role": "user", "content": "What is Apple's current stock price?"}]
 
 response = client.messages.create(
     model="claude-sonnet",
@@ -2681,7 +2735,7 @@ if response.stop_reason == "tool_use":
     tool_block = next(b for b in response.content if b.type == "tool_use")
     print(f"Tool call: {tool_block.name}({json.dumps(tool_block.input)})")
 
-    # Клиент вызывает свой API и возвращает результат
+    # Client invokes its API and returns the result
     messages.append({"role": "assistant", "content": response.content})
     messages.append({
         "role": "user",
@@ -2708,25 +2762,25 @@ if response.stop_reason == "tool_use":
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 1024,
     "tools": [
       {
         "name": "get_stock_price",
-        "description": "Получает текущую цену акции по тикеру.",
+        "description": "Returns the current stock price by ticker.",
         "input_schema": {
           "type": "object",
           "properties": {
-            "ticker": {"type": "string", "description": "Тикер акции"}
+            "ticker": {"type": "string", "description": "Stock ticker"}
           },
           "required": ["ticker"]
         }
       }
     ],
     "messages": [
-      {"role": "user", "content": "Какая сейчас цена акций Apple?"}
+      {"role": "user", "content": "What is Apple stock price?"}
     ]
   }'
 ```
@@ -2741,7 +2795,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2756,7 +2810,7 @@ message = client.messages.create(
         }
     ],
     messages=[
-        {"role": "user", "content": "Какие последние новости о квантовых компьютерах?"}
+        {"role": "user", "content": "What is the latest news about quantum computers?"}
     ],
 )
 
@@ -2770,7 +2824,7 @@ for block in message.content:
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 4096,
@@ -2782,7 +2836,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
       }
     ],
     "messages": [
-      {"role": "user", "content": "Какие последние новости о квантовых компьютерах?"}
+      {"role": "user", "content": "What is the latest news about quantum computers?"}
     ]
   }'
 ```
@@ -2797,11 +2851,11 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
-long_system = "Ты эксперт-юрист. Вот полный текст закона: " + "..." * 500
+long_system = "You are an expert lawyer. Full text of the statute: " + "..." * 500
 
 message = client.messages.create(
     model="claude-sonnet",
@@ -2814,7 +2868,7 @@ message = client.messages.create(
         }
     ],
     messages=[
-        {"role": "user", "content": "Какие штрафы предусмотрены статьей 12?"}
+        {"role": "user", "content": "What penalties does article 12 prescribe?"}
     ],
 )
 
@@ -2828,19 +2882,19 @@ print(f"Cache read: {message.usage.cache_read_input_tokens}")
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "max_tokens": 2048,
     "system": [
       {
         "type": "text",
-        "text": "Ты эксперт-юрист. Вот полный текст закона: ...(длинный текст)...",
+        "text": "You are an expert lawyer. Full text of the statute: ...(long text)...",
         "cache_control": {"type": "ephemeral"}
       }
     ],
     "messages": [
-      {"role": "user", "content": "Какие штрафы предусмотрены статьей 12?"}
+      {"role": "user", "content": "What penalties does article 12 prescribe?"}
     ]
   }'
 ```
@@ -2855,7 +2909,7 @@ curl -X POST https://gateway.example.com/api/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2864,7 +2918,7 @@ result = client.messages.count_tokens(
     messages=[
         {
             "role": "user",
-            "content": "Напиши детальный обзор архитектуры микросервисов.",
+            "content": "Write a detailed overview of microservice architecture.",
         }
     ],
 )
@@ -2877,11 +2931,11 @@ print(f"Input tokens: {result.input_tokens}")
 ```bash
 curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-sonnet",
     "messages": [
-      {"role": "user", "content": "Напиши детальный обзор архитектуры микросервисов."}
+      {"role": "user", "content": "Write a detailed overview of microservice architecture."}
     ]
   }'
 ```
@@ -2896,7 +2950,7 @@ curl -X POST https://gateway.example.com/api/v1/messages/count_tokens \
 import anthropic
 
 client = anthropic.Anthropic(
-    api_key="gw_live_ваш_ключ",
+    api_key="gw_live_your_key",
     base_url="https://gateway.example.com/api/v1",
 )
 
@@ -2908,15 +2962,15 @@ batch = client.messages.batches.create(
                 "model": "claude-haiku",
                 "max_tokens": 512,
                 "messages": [
-                    {"role": "user", "content": f"Переведи на английский: '{text}'"}
+                    {"role": "user", "content": f"Translate to English: '{text}'"}
                 ],
             },
         }
         for i, text in enumerate([
-            "Привет, мир!",
-            "Как дела?",
-            "Спасибо за помощь.",
-            "До свидания.",
+            "Hello, world!",
+            "How are you?",
+            "Thanks for your help.",
+            "Goodbye.",
         ])
     ]
 )
@@ -2924,7 +2978,7 @@ batch = client.messages.batches.create(
 print(f"Batch ID: {batch.id}")
 print(f"Status: {batch.processing_status}")
 
-# Ожидание результатов (polling)
+# Wait for results (polling)
 import time
 while True:
     status = client.messages.batches.retrieve(batch.id)
@@ -2932,7 +2986,7 @@ while True:
         break
     time.sleep(10)
 
-# Получение результатов
+# Fetch results
 for result in client.messages.batches.results(batch.id):
     print(f"{result.custom_id}: {result.result.message.content[0].text}")
 ```
@@ -2940,10 +2994,10 @@ for result in client.messages.batches.results(batch.id):
 **curl:**
 
 ```bash
-# Создание batch
+# Create batch
 curl -X POST https://gateway.example.com/api/v1/batches \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "requests": [
       {
@@ -2951,7 +3005,7 @@ curl -X POST https://gateway.example.com/api/v1/batches \
         "params": {
           "model": "claude-haiku",
           "max_tokens": 512,
-          "messages": [{"role": "user", "content": "Переведи на английский: Привет, мир!"}]
+          "messages": [{"role": "user", "content": "Translate to English: Hello, world!"}]
         }
       },
       {
@@ -2959,19 +3013,19 @@ curl -X POST https://gateway.example.com/api/v1/batches \
         "params": {
           "model": "claude-haiku",
           "max_tokens": 512,
-          "messages": [{"role": "user", "content": "Переведи на английский: Как дела?"}]
+          "messages": [{"role": "user", "content": "Translate to English: How are you?"}]
         }
       }
     ]
   }'
 
-# Проверка статуса
+# Check status
 curl https://gateway.example.com/api/v1/batches/bat_ID \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 
-# Получение результатов
+# Fetch results
 curl https://gateway.example.com/api/v1/batches/bat_ID/results \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
 ---
@@ -2985,33 +3039,33 @@ import httpx
 
 BASE = "https://gateway.example.com/api/v1"
 HEADERS = {
-    "Authorization": "Bearer gw_live_ваш_ключ",
+    "Authorization": "Bearer gw_live_your_key",
     "Content-Type": "application/json",
 }
 
-# Создание сессии
+# Create the session
 resp = httpx.post(f"{BASE}/sessions", headers=HEADERS, json={
     "model": "claude-sonnet",
-    "system": "Ты ассистент-программист на Python.",
+    "system": "You are a Python programming assistant.",
     "max_tokens": 4096,
 })
 session = resp.json()
 session_id = session["session_id"]
 print(f"Session: {session_id}")
 
-# Первое сообщение
+# First message
 resp = httpx.post(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS, json={
-    "content": "Как реализовать singleton на Python?",
+    "content": "How do I implement a singleton in Python?",
 })
 print(resp.json()["content"][0]["text"])
 
-# Второе сообщение (контекст сохранен)
+# Second message (context retained)
 resp = httpx.post(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS, json={
-    "content": "А теперь покажи thread-safe вариант.",
+    "content": "Now show a thread-safe variant.",
 })
 print(resp.json()["content"][0]["text"])
 
-# История сессии
+# Session history
 resp = httpx.get(f"{BASE}/sessions/{session_id}/messages", headers=HEADERS)
 for msg in resp.json():
     print(f"[{msg['role']}]: {msg['content'][:80]}...")
@@ -3020,24 +3074,24 @@ for msg in resp.json():
 **curl:**
 
 ```bash
-# Создание сессии
+# Create the session
 SESSION_ID=$(curl -s -X POST https://gateway.example.com/api/v1/sessions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
-  -d '{"model": "claude-sonnet", "system": "Ты ассистент.", "max_tokens": 4096}' \
+  -H "Authorization: Bearer gw_live_your_key" \
+  -d '{"model": "claude-sonnet", "system": "You are an assistant.", "max_tokens": 4096}' \
   | jq -r '.session_id')
 
-# Первое сообщение
+# First message
 curl -X POST "https://gateway.example.com/api/v1/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
-  -d '{"content": "Как реализовать singleton?"}'
+  -H "Authorization: Bearer gw_live_your_key" \
+  -d '{"content": "How do I implement a singleton?"}'
 
-# Второе сообщение
+# Second message
 curl -X POST "https://gateway.example.com/api/v1/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
-  -d '{"content": "А теперь покажи thread-safe вариант."}'
+  -H "Authorization: Bearer gw_live_your_key" \
+  -d '{"content": "Now show a thread-safe variant."}'
 ```
 
 ---
@@ -3047,20 +3101,20 @@ curl -X POST "https://gateway.example.com/api/v1/sessions/$SESSION_ID/messages" 
 **curl:**
 
 ```bash
-# Отправка async-запроса (callback_url должен быть в whitelist клиента)
+# Submit an async request (callback_url must be in the client's whitelist)
 curl -X POST https://gateway.example.com/api/v1/messages/async \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer gw_live_ваш_ключ" \
+  -H "Authorization: Bearer gw_live_your_key" \
   -d '{
     "model": "claude-opus",
     "max_tokens": 8192,
     "messages": [
-      {"role": "user", "content": "Напиши детальный анализ текущего состояния рынка AI."}
+      {"role": "user", "content": "Write a detailed analysis of the current AI market."}
     ],
     "callback_url": "https://your-api.example.com/api/llm-callback"
   }'
 
-# Ответ: 202 Accepted
+# Response: 202 Accepted
 # {
 #   "request_id": "req_abc123def456ghi789jkl012",
 #   "status": "accepted",
@@ -3070,14 +3124,14 @@ curl -X POST https://gateway.example.com/api/v1/messages/async \
 #   "expires_at": "2026-04-15T10:00:00+00:00"
 # }
 
-# Опциональный polling (вместо ожидания webhook)
+# Optional polling (instead of waiting for the webhook)
 curl https://gateway.example.com/api/v1/messages/req_abc123def456ghi789jkl012 \
-  -H "Authorization: Bearer gw_live_ваш_ключ"
+  -H "Authorization: Bearer gw_live_your_key"
 ```
 
-Webhook получит wrapped envelope (см. раздел 6) с подписью `X-Gateway-Signature`.
+The webhook receives a wrapped envelope (see section 6) with the `X-Gateway-Signature` signature.
 
-Пример обработчика на стороне клиента (Python / Flask):
+Example handler on the client side (Python / Flask):
 
 ```python
 import hmac
@@ -3085,7 +3139,7 @@ import hashlib
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-SIGNING_SECRET = "ваш_signing_secret"
+SIGNING_SECRET = "your_signing_secret"
 
 @app.route("/api/llm-callback", methods=["POST"])
 def llm_callback():

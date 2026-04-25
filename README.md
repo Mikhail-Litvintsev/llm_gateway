@@ -1,6 +1,5 @@
 # LLM Gateway
 
-[![CI](https://github.com/Mikhail-Litvintsev/llm_gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/Mikhail-Litvintsev/llm_gateway/actions/workflows/ci.yml)
 ![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)
 ![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
 ![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
@@ -102,6 +101,8 @@ sequenceDiagram
 | *      | `/v1/skills/*`              | skills     | Skill manifest registration and lifecycle. |
 | GET    | `/internal/health`          | ops        | Unauthenticated health probe. |
 
+All `/v1/*` endpoints are protected by a per-client rate limit (HTTP 429 with `Retry-After` and `X-RateLimit-*` headers on exceed). See [Rate limiting](documentation/client_integration_guide.md#rate-limiting).
+
 Full specification: [documentation/client_integration_guide.md](documentation/client_integration_guide.md).
 
 Protocol compatibility: pass-through of the Anthropic Messages API. See [Deviations](documentation/client_integration_guide.md#deviations-from-anthropic-messages-api) for gateway-specific differences (auth, headers, additional endpoints, webhook envelope, error extensions). Architectural rationale: [documentation/decisions.md](documentation/decisions.md) ([ADR-001](documentation/decisions.md#adr-001-claude-only-gateway), [ADR-007](documentation/decisions.md#adr-007-no-openapi)).
@@ -157,6 +158,7 @@ Method, environment, host specs and raw numbers: [`benchmarks/results.md`](bench
 - Laravel Horizon is intentionally not used. Queue monitoring is done through Artisan commands and the `failed_jobs` table (see [ADR-002](documentation/decisions.md#adr-002-no-horizon)).
 - End-to-end p95 is dominated by Anthropic response latency (1–5+ seconds) and is outside the gateway's control. The published numbers above measure gateway overhead only.
 - Async idempotency relies on a pre-call DB check; a narrow race window exists between the upstream HTTP response and the first `request_raw` insert. See [ADR-005](documentation/decisions.md#adr-005-no-idempotency-key-for-anthropic-messages-api).
+- Webhook delivery: a 4xx response from the client endpoint is treated as a permanent failure and is not retried. The status list is configurable via `config/llm.php` → `webhook.permanent_fail_statuses` (defaults: `400, 401, 403, 404, 410, 413, 422`). Transient failures (5xx, network) follow the exponential-backoff retry curve up to `webhook.default_max_attempts`.
 
 ## AI-assisted development
 
@@ -169,7 +171,7 @@ This repository was built with Claude Code as an AI pair-programmer. The `CLAUDE
 - [Operational runbook](documentation/operational_runbook.md) — on-call procedures, migrations, rollbacks.
 - [Microservices setup](documentation/microservices_setup_guide.md) — deployment outside Docker Compose.
 - [Commands](documentation/commands.md) — Artisan command reference.
-- [Architectural decisions](documentation/decisions.md) — ADR-001…010: non-obvious choices and their trade-offs.
+- [Architectural decisions](documentation/decisions.md) — ADR-001…011: non-obvious choices and their trade-offs.
 - [Benchmarks](benchmarks/readme.md) — gateway overhead measurement method and reproducible results.
 
 ## License

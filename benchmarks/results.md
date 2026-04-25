@@ -45,7 +45,7 @@ Thresholds are targets; exceeding them does not invalidate the measurement — t
 
 ### Raw k6 summary (trimmed)
 
-```
+```text
 checks.........................: 93.71% ✓ 32037 ✗ 2148
 gateway_overhead_ms............: avg=74.304968 min=19.841472 med=77.297555 max=249.891655 p(90)=106.423911 p(95)=115.354691 p(99)=136.011561
 http_req_duration..............: avg=74.30ms   min=19.84ms   med=77.29ms   max=249.89ms   p(90)=106.42ms  p(95)=115.35ms  p(99)=136.01ms
@@ -62,7 +62,7 @@ iterations.....................: 34185  227.81399/s
 
 ### Reproducing
 
-```
+```bash
 docker compose -f benchmarks/docker-compose.bench.yml up -d mock_upstream
 echo "CLAUDE_API_BASE_URL=http://llm_mock_upstream:8090" >> .env
 docker compose up -d --force-recreate llm_gateway

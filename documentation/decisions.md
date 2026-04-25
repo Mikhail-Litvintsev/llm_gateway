@@ -16,6 +16,7 @@ Format inspired by Michael Nygard's ADR template. Dates are in ISO-8601.
 - [ADR-008: p95 overhead measurement, not full-response latency](#adr-008-p95-overhead-measurement-not-full-response-latency)
 - [ADR-009: CORS restrictive by default](#adr-009-cors-restrictive-by-default)
 - [ADR-010: `async_pending.payload_for_anthropic` stored as longText](#adr-010-async_pendingpayload_for_anthropic-stored-as-longtext)
+- [ADR-011: Per-client rate limiting via Laravel RateLimiter](#adr-011-per-client-rate-limiting-via-laravel-ratelimiter)
 - [Future ADR candidates](#future-adr-candidates)
 
 ---
@@ -58,9 +59,9 @@ Format inspired by Michael Nygard's ADR template. Dates are in ISO-8601.
 - **Status:** Accepted (2026-04-25)
 - **Context:** Webhook delivery is multi-step and long-running: up to 10 attempts across up to ~90 minutes with exponential backoff (10s → 20s → … → 3600s cap). Queue-level retries (`$tries` + `backoff()`) expose one integer counter — the same counter that `$job->release($delay)` increments — and offer no way to persist state (current attempt, next-attempt-at, exhaustion) for inspection between pickups.
 - **Decision:** `DeliverWebhook` uses `$tries = 1` deliberately. The job is a single delivery attempt; retry state lives in `async_pending.{callback_attempts, next_attempt_at, status}`. A scheduler (`RetryFailedWebhooks`, `routes/console.php`) runs every minute and dispatches the next `DeliverWebhook` for each row whose `next_attempt_at <= now()`.
-- **Consequences:** Retry state is queryable and survives worker restarts. The grace-period rotation for the signing secret works naturally because the scheduler always re-reads the row. The downside: delivery bias is ≤1 minute (scheduler resolution) — not meaningful for webhooks that already have multi-second backoff.
-- **Revisit trigger:** Migration to a workflow engine (Temporal / Cadence) — then the state machine moves out of the DB into the workflow definition.
-- **Related:** `app/Jobs/DeliverWebhook.php`, `app/Jobs/Scheduled/RetryFailedWebhooks.php`, Phase 3 "Важно про два разных паттерна retries". Scheduler hot-path is covered by composite index `async_pending_next_attempt_status_idx` on `(next_attempt_at, status)` — leading column has high selectivity so range scan over `next_attempt_at <= NOW()` is index-bound.
+- **Consequences:** Retry state is queryable and survives worker restarts. The grace-period rotation for the signing secret works naturally because the scheduler always re-reads the row. A 4xx response from the client endpoint that falls in `config('llm.webhook.permanent_fail_statuses')` (`400, 401, 403, 404, 410, 413, 422`) marks the row exhausted after a single attempt with `reason=permanent_fail`, distinct from attempt-exhausted transient failures (`reason=transient_fail`) — both states are queryable in `async_pending` and logged on the `llm` channel. The downside: delivery bias is ≤1 minute (scheduler resolution) — not meaningful for webhooks that already have multi-second backoff.
+- **Revisit trigger:** Migration to a workflow engine (Temporal / Cadence) — then the state machine moves out of the DB into the workflow definition. OR clients start returning 4xx for legitimately retriable conditions — reconsider the status list in `config/llm.php` → `webhook.permanent_fail_statuses`.
+- **Related:** `app/Jobs/DeliverWebhook.php`, `app/Jobs/Scheduled/RetryFailedWebhooks.php`, Phase 3 of the senior-review backlog (two distinct retry patterns: queue-level vs state-machine). Scheduler hot-path is covered by composite index `async_pending_next_attempt_status_idx` on `(next_attempt_at, status)` — leading column has high selectivity so range scan over `next_attempt_at <= NOW()` is index-bound.
 
 ---
 
@@ -134,6 +135,17 @@ Format inspired by Michael Nygard's ADR template. Dates are in ISO-8601.
 - **Consequences:** Migration is trivial, the job just reads its own row. InnoDB row size may bloat for large payloads, off-page storage kicks in for >8 KB values, and the `async_pending` table can grow quickly under heavy file traffic. Acceptable for pet-scope. The production-ready path is well-known: put the payload into object storage (S3 / minio), store only a pointer (`async_pending.payload_storage_key`) in the DB, lazy-load the payload in the worker.
 - **Revisit trigger:** Either (a) >1% of async requests carry >1 MB payloads, or (b) `async_pending` on disk exceeds ~10 GB. Migration work is ~1 sprint: storage driver + pointer column + dual-read during rollout.
 - **Related:** `database/migrations/*async_pending*`, Phase 7.4 "Open questions".
+
+---
+
+## ADR-011: Per-client rate limiting via Laravel RateLimiter
+
+- **Status:** Accepted (2026-04-25)
+- **Context:** A compromised client API key could submit a high request volume, drain the Anthropic workspace-level quota, and generate uncontrolled billing spend before the leak is noticed. Anthropic's own rate limits protect the upstream from catastrophic overload but cannot distinguish between clients sharing the same workspace key. The gateway needs a secondary, per-client budget enforced before the upstream call.
+- **Decision:** Register a named limiter `api-client` via `RateLimiter::for('api-client', ...)` in `App\Providers\AppServiceProvider::boot()`. Apply it to `/v1/*` routes through the `throttle:api-client` middleware, after `auth.api_key` (which populates `auth.client` in the request attribute bag with an `App\Models\Client` instance). Bucket key: `client:<id>` — not IP. An IP key would punish a single client behind NAT for another tenant's traffic and would let a rotating-IP attacker bypass the limit. Per-minute budget: `Client::rate_limit_rpm` when set, otherwise `config('llm.rate_limit.default_per_minute')` (default 600/min, env `GATEWAY_DEFAULT_RATE_LIMIT_PER_MINUTE`). The 429 response uses the standard `error.type=rate_limit_error` shape with `Retry-After`, `X-RateLimit-Limit` and `X-RateLimit-Remaining` headers populated by Laravel's limiter.
+- **Consequences:** A compromised key is bounded to that client's own budget; a leak cannot damage other tenants or burn the entire workspace quota in minutes. One Redis round-trip per request for bucket state — measured at ~1–2 ms overhead, well below the gateway's overall p95. Per-client limit changes are instant: the limiter reads `clients.rate_limit_rpm` on every request, no cache to invalidate. Setting `rate_limit_rpm = NULL` falls back to the global default. The downside: the limiter is application-level, so a deployment swap-out of Laravel (or a dedicated upstream API gateway) would require relocating this logic.
+- **Revisit trigger:** Deployment moves to a dedicated API gateway layer (Kong, Tyk, AWS API Gateway, Envoy) — relocate rate-limiting there; the application-level limiter becomes redundant. OR hot-path latency regressions traceable to the bucket Redis round-trip — consider an L1 in-process cache with short TTL for the budget value.
+- **Related:** `app/Providers/AppServiceProvider.php`, `app/Models/Client.php`, `routes/api.php`, `config/llm.php` (`rate_limit.default_per_minute`), `documentation/client_integration_guide.md` (Rate limiting section).
 
 ---
 
