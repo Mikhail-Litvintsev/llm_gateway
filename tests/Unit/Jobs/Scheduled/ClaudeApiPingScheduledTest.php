@@ -35,9 +35,13 @@ final class ClaudeApiPingScheduledTest extends TestCase
     #[Test]
     public function caches_down_with_decrypt_message_when_workspace_decryption_fails(): void
     {
-        ClaudeWorkspace::query()->where('name', 'default')->update([
-            'api_key_encrypted' => 'corrupted-payload-not-decryptable',
-        ]);
+        ClaudeWorkspace::query()->updateOrCreate(
+            ['name' => 'default'],
+            [
+                'api_key_encrypted' => 'corrupted-payload-not-decryptable',
+                'is_active' => true,
+            ],
+        );
 
         Http::fake();
 
