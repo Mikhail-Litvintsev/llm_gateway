@@ -88,6 +88,9 @@ final class ToolTypeCatalog
             || $type === self::EDIT_CLEAR_THINKING;
     }
 
+    /**
+     * @param  list<string>  $requestToolTypes
+     */
     public static function codeExecutionIsFree(array $requestToolTypes): bool
     {
         if (! in_array(self::CODE_EXECUTION, $requestToolTypes, true)) {

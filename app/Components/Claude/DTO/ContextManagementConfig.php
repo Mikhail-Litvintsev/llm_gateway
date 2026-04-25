@@ -6,12 +6,20 @@ namespace App\Components\Claude\DTO;
 
 final readonly class ContextManagementConfig
 {
+    /**
+     * @param  array<string, mixed>|null  $compaction
+     * @param  array<string, mixed>|null  $clearToolUses
+     * @param  array<string, mixed>|null  $clearThinking
+     */
     public function __construct(
         public ?array $compaction = null,
         public ?array $clearToolUses = null,
         public ?array $clearThinking = null,
     ) {}
 
+    /**
+     * @param  array<string, mixed>|null  $raw
+     */
     public static function fromArray(?array $raw): self
     {
         if ($raw === null || $raw === []) {

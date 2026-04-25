@@ -63,6 +63,9 @@ class ClaudeRateLimitTracker
         }
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $responseHeaders
+     */
     public function recordFromHeaders(
         RateLimitNamespace $ns,
         string $workspaceKeyHash,
@@ -148,11 +151,17 @@ class ClaudeRateLimitTracker
         );
     }
 
+    /**
+     * @param  array<string, string>  $headers
+     */
     private function recordPriorityHeaders(string $workspaceKeyHash, string $modelSnapshot, array $headers): void
     {
         $this->recordPrefixedHeaders(RateLimitNamespace::Priority, 'anthropic-priority-ratelimit-', $workspaceKeyHash, $modelSnapshot, $headers);
     }
 
+    /**
+     * @param  array<string, string>  $headers
+     */
     private function recordPrefixedHeaders(
         RateLimitNamespace $ns,
         string $prefix,
@@ -190,6 +199,9 @@ class ClaudeRateLimitTracker
         Redis::setex($key, $ttl, json_encode($this->snapshotToArray($snapshot), JSON_THROW_ON_ERROR));
     }
 
+    /**
+     * @param  array<string, string>  $headers
+     */
     private function recordBatchHeaders(string $workspaceKeyHash, string $modelSnapshot, array $headers): void
     {
         if (! isset($headers['anthropic-ratelimit-batches-remaining'])) {
@@ -245,6 +257,10 @@ class ClaudeRateLimitTracker
         return "claude_rl:{$ns->value}:{$workspaceKeyHash}:{$modelSnapshot}";
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     * @return array<string, string>
+     */
     private function normalizeHeaders(array $headers): array
     {
         $normalized = [];
@@ -255,6 +271,9 @@ class ClaudeRateLimitTracker
         return $normalized;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function snapshotToArray(RateLimitSnapshot $snapshot): array
     {
         return [

@@ -22,6 +22,9 @@ final class BatchAccumulator
         private readonly FlushTriggerEvaluator $triggerEvaluator,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $itemPayload
+     */
     public function append(
         Client $client,
         array $itemPayload,
@@ -63,6 +66,9 @@ final class BatchAccumulator
         );
     }
 
+    /**
+     * @return array<int, mixed>
+     */
     private function runAppendScript(
         AccumulatorBucketKey $bucketKey,
         string $itemJson,

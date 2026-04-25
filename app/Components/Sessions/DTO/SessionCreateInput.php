@@ -8,6 +8,11 @@ use DateTimeImmutable;
 
 final readonly class SessionCreateInput
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $tools
+     * @param  array<string, mixed>  $contextManagement
+     * @param  array<int, array<string, mixed>>|null  $mcpServers
+     */
     public function __construct(
         public int $clientId,
         public ?int $workspaceId,

@@ -20,9 +20,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $server_tool_code_exec_count
  * @property int $server_tool_tool_search_count
  * @property string $cost_usd
- * @property ?array $cost_breakdown
- * @property ?array $iterations_json
- * @property ?array $rate_limit_headers
+ * @property ?array<string, mixed> $cost_breakdown
+ * @property ?array<int, array<string, mixed>> $iterations_json
+ * @property ?array<string, string> $rate_limit_headers
  */
 class RequestUsage extends Model
 {

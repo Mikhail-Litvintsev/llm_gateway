@@ -17,6 +17,9 @@ final readonly class ServerFeaturesRule
         private CodeExecutionUsageTracker $codeExecTracker,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload, Client $client): void
     {
         $allowedFeatures = $client->allowed_features ?? [];

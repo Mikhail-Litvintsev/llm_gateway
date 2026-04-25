@@ -191,6 +191,10 @@ final class SubmitBatchToAnthropic implements ShouldQueue
         ]);
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $responseHeaders
+     * @return array<string, string>
+     */
     private function filterRateLimitHeaders(array $responseHeaders): array
     {
         $filtered = [];

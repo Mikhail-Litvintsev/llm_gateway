@@ -21,6 +21,10 @@ final class PayloadMasker
         return json_encode(self::redactRecursive($decoded), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
+    /**
+     * @param  array<int|string, mixed>  $data
+     * @return array<int|string, mixed>
+     */
     private static function redactRecursive(array $data): array
     {
         foreach ($data as $key => &$value) {

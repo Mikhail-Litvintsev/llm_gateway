@@ -31,6 +31,9 @@ final readonly class ClaudeFile
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [

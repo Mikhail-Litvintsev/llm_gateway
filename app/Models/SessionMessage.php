@@ -13,9 +13,9 @@ use Illuminate\Support\Carbon;
  * @property int $session_id
  * @property int $turn_index
  * @property string $role
- * @property array $content
+ * @property array<int, array<string, mixed>> $content
  * @property ?string $stop_reason
- * @property ?array $usage
+ * @property ?array<string, mixed> $usage
  * @property ?string $model
  * @property ?string $request_id
  * @property ?Carbon $created_at

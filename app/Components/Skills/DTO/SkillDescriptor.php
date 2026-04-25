@@ -13,6 +13,9 @@ final readonly class SkillDescriptor
         public ?string $version = null,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public static function fromArray(array $data): self
     {
         return new self(
@@ -23,6 +26,9 @@ final readonly class SkillDescriptor
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toPayload(): array
     {
         $payload = ['type' => $this->type, 'name' => $this->name];

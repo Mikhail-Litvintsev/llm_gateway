@@ -6,6 +6,14 @@ namespace App\Components\Claude\DTO;
 
 final readonly class MessageRequest
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  array<int, array<string, mixed>>|null  $tools
+     * @param  array<string, mixed>|null  $toolChoice
+     * @param  array<string, mixed>|null  $thinking
+     * @param  array<string, mixed>|null  $cacheControl
+     * @param  array<string, mixed>|null  $metadata
+     */
     public function __construct(
         public string $modelAlias,
         public array $messages,

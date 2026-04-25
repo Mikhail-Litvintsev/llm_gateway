@@ -9,6 +9,9 @@ use App\Models\Client;
 
 final readonly class SendMessageInput
 {
+    /**
+     * @param  list<string>  $featuresUsed
+     */
     public function __construct(
         public BuiltPayload $payload,
         public Client $client,

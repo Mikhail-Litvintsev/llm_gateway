@@ -8,6 +8,11 @@ use App\Components\Claude\ToolTypeCatalog;
 
 final readonly class ServerToolPricing
 {
+    /**
+     * @param  array<string, int>  $counts
+     * @param  list<string>  $requestServerToolTypes
+     * @return array{web_search_usd: float, code_execution_usd: float, code_execution_free_hours_remaining: float}
+     */
     public function priceServerTools(
         array $counts,
         array $requestServerToolTypes,

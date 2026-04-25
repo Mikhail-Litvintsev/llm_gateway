@@ -8,6 +8,9 @@ use App\Components\Billing\DTO\TokenEstimate;
 
 final class CostEstimator
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function estimate(array $payload, string $modelAlias): float
     {
         $tokens = $this->estimateTokens($payload, $modelAlias);
@@ -15,6 +18,9 @@ final class CostEstimator
         return $this->estimateFromTokens($tokens->inputTokens, $tokens->outputTokens, $modelAlias);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function estimateTokens(array $payload, string $modelAlias): TokenEstimate
     {
         $chars = $this->countCharsInPayload($payload);
@@ -39,6 +45,9 @@ final class CostEstimator
         return ($inputTokens * $inputPrice / 1_000_000) + ($outputTokens * $outputPrice / 1_000_000);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function countCharsInPayload(array $payload): int
     {
         $chars = 0;

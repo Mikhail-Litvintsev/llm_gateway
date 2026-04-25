@@ -92,7 +92,8 @@ final class Logging
      * Unlike record() which INSERTs all three rows, this method UPDATEs the requests row
      * (created at 202-acceptance time) and INSERTs usage + raw data.
      *
-     * @param  string[]  $features
+     * @param  array<string, mixed>  $decodedPayload
+     * @param  list<string>  $features
      *
      * @throws Throwable
      */

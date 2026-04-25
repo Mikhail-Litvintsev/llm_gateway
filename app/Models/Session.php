@@ -16,10 +16,10 @@ use Illuminate\Support\Carbon;
  * @property ?int $workspace_id
  * @property ?string $model_alias
  * @property ?string $system
- * @property ?array $tools
- * @property ?array $mcp_servers
+ * @property ?array<int, array<string, mixed>> $tools
+ * @property ?array<int, array<string, mixed>> $mcp_servers
  * @property string $cache_strategy
- * @property ?array $context_management
+ * @property ?array<string, mixed> $context_management
  * @property int $total_input_tokens
  * @property int $total_output_tokens
  * @property string $total_cost_usd

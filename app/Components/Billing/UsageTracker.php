@@ -6,6 +6,7 @@ namespace App\Components\Billing;
 
 use App\Models\Client;
 use Carbon\CarbonImmutable;
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Redis;
 
 class UsageTracker
@@ -75,7 +76,7 @@ class UsageTracker
             : null;
     }
 
-    private function ensureTtl($connection, string $key): void
+    private function ensureTtl(Connection $connection, string $key): void
     {
         $ttl = $connection->ttl($key);
 

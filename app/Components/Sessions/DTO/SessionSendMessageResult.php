@@ -6,6 +6,11 @@ namespace App\Components\Sessions\DTO;
 
 final readonly class SessionSendMessageResult
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $assistantContent
+     * @param  array<string, mixed>  $usage
+     * @param  list<string>  $warnings
+     */
     public function __construct(
         public string $publicId,
         public int $messageCount,

@@ -16,6 +16,9 @@ final readonly class FileListPage
         public ?string $nextCursor,
     ) {}
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [

@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $name
  * @property ?string $version
  * @property bool $is_prebuilt
- * @property ?array $metadata
+ * @property ?array<string, mixed> $metadata
  * @property bool $is_deleted
  */
 class ClientSkill extends Model

@@ -18,6 +18,7 @@ use App\Components\Routing\ModelResolver;
 use App\Components\Routing\WorkspaceResolver;
 use App\Components\Sessions\Contracts\SessionsContract;
 use App\Components\Sessions\Contracts\SessionStoreContract;
+use App\Components\Sessions\DTO\MemoryCommandResult;
 use App\Components\Sessions\DTO\SessionCreateInput;
 use App\Components\Sessions\DTO\SessionHistoryPage;
 use App\Components\Sessions\DTO\SessionMetadata;
@@ -246,6 +247,10 @@ final readonly class Sessions implements SessionsContract
         return $session;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<string, mixed>
+     */
     private function buildPayload(Session $session, array $messages, SessionSendMessageInput $input): array
     {
         $payload = [
@@ -281,6 +286,9 @@ final readonly class Sessions implements SessionsContract
         return $payload;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function validatePayload(array $payload, Client $client): void
     {
         $validationResult = $this->validator->validate($payload, ValidationContext::Session, $client);
@@ -294,6 +302,10 @@ final readonly class Sessions implements SessionsContract
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $featuresUsed
+     */
     private function callClaudeSync(array $payload, Client $client, array $featuresUsed): MessageResponse
     {
         $builtPayload = $this->payloadBuilder->build($payload, $client);
@@ -325,6 +337,9 @@ final readonly class Sessions implements SessionsContract
         );
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     */
     private function handleCompaction(Session $session, array $content): void
     {
         if ($this->hasCompaction($content)) {
@@ -332,11 +347,17 @@ final readonly class Sessions implements SessionsContract
         }
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     */
     private function hasCompaction(array $content): bool
     {
         return array_any($content, fn (array $block): bool => ($block['type'] ?? '') === 'compaction');
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     */
     private function hasMemoryToolUse(array $content): bool
     {
         return array_any(
@@ -346,6 +367,10 @@ final readonly class Sessions implements SessionsContract
         );
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     * @return list<MemoryCommandResult>
+     */
     private function dispatchMemoryTools(Session $session, array $content): array
     {
         $toolResults = [];
@@ -359,6 +384,10 @@ final readonly class Sessions implements SessionsContract
         return $toolResults;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $tools
+     * @return list<string>
+     */
     private function extractFeaturesFromTools(array $tools): array
     {
         return array_values(array_unique(

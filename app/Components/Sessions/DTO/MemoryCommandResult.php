@@ -12,6 +12,9 @@ final readonly class MemoryCommandResult
         public bool $isError,
     ) {}
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toToolResultBlock(): array
     {
         return [

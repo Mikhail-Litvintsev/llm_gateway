@@ -15,6 +15,9 @@ final readonly class ThinkingSpec
         public ?int $budgetTokens = null,
     ) {}
 
+    /**
+     * @param  array<string, mixed>|null  $raw
+     */
     public static function fromArray(?array $raw): self
     {
         if ($raw === null) {

@@ -15,6 +15,9 @@ final readonly class UsageReportRequest
         public ?string $page = null,
     ) {}
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toQueryParams(): array
     {
         $params = [

@@ -78,6 +78,9 @@ class MessageRequestValidator
         private readonly ?ServerFeaturesRule $serverFeaturesRule = null,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function validate(array $payload, ValidationContext $ctx, Client $client): ValidationResult
     {
         $errors = [];
@@ -99,6 +102,10 @@ class MessageRequestValidator
         return new ValidationResult($errors);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<ValidationError>  $errors
+     */
     private function preCheck(array $payload, array &$errors): void
     {
         if (! isset($payload['messages'])) {
@@ -119,6 +126,10 @@ class MessageRequestValidator
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<ValidationError>  $errors
+     */
     private function schemaCheck(array $payload, ValidationContext $ctx, array &$errors): void
     {
         $schemaUri = $ctx === ValidationContext::BatchItem
@@ -140,6 +151,10 @@ class MessageRequestValidator
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<ValidationError>  $errors
+     */
     private function contextRulesCheck(array $payload, ValidationContext $ctx, Client $client, array &$errors): void
     {
         $rules = self::RULES_PER_CONTEXT[$ctx->value];
@@ -179,6 +194,10 @@ class MessageRequestValidator
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<ValidationError>  $errors
+     */
     private function phase4Rules(array $payload, ValidationContext $ctx, Client $client, array &$errors): void
     {
         $this->serverFeaturesRule?->check($payload, $client);
@@ -305,6 +324,10 @@ class MessageRequestValidator
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<ValidationError>  $errors
+     */
     private function semanticCheck(array $payload, array &$errors): void
     {
         $messages = $payload['messages'] ?? [];

@@ -6,6 +6,10 @@ namespace App\Components\Routing\DTO;
 
 readonly class ResolvedModel
 {
+    /**
+     * @param  array<string, mixed>  $capabilities
+     * @param  array<string, mixed>  $pricing
+     */
     public function __construct(
         public string $alias,
         public string $snapshot,

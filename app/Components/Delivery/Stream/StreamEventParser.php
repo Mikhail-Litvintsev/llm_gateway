@@ -105,6 +105,9 @@ final class StreamEventParser
         $this->malformedEventCount = 0;
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     private function handleMessageStart(array $data): void
     {
         $message = $data['message'] ?? [];
@@ -116,6 +119,9 @@ final class StreamEventParser
         $this->serviceTier = $message['service_tier'] ?? $this->serviceTier;
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     private function handleMessageDelta(array $data): void
     {
         $delta = $data['delta'] ?? [];
@@ -130,6 +136,9 @@ final class StreamEventParser
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     private function handleError(array $data): void
     {
         $this->errored = true;

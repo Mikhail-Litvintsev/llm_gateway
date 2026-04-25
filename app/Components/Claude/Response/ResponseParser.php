@@ -14,6 +14,10 @@ final class ResponseParser
         'end_turn', 'max_tokens', 'tool_use', 'pause_turn', 'refusal', 'model_context_window_exceeded',
     ];
 
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  array<string, string|list<string>>  $headers
+     */
     public function parseMessageResponse(array $body, array $headers): MessageResponse
     {
         $rateLimitHeaders = [];
@@ -65,7 +69,9 @@ final class ResponseParser
         );
     }
 
-    /** @return array{parsed: array, usage: array} */
+    /**
+     * @return array{parsed: array<string, mixed>, usage: array<string, mixed>}
+     */
     public function parseSuccess(string $rawBody): array
     {
         $decoded = json_decode($rawBody, true, 512, JSON_THROW_ON_ERROR);
@@ -76,6 +82,9 @@ final class ResponseParser
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $usage
+     */
     public function extractUsageData(array $usage): UsageData
     {
         $inputTokens = $usage['input_tokens'] ?? 0;
@@ -117,6 +126,10 @@ final class ResponseParser
         );
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     * @return array<int, mixed>
+     */
     private function tagMcpToolUses(array $content): array
     {
         foreach ($content as &$block) {
@@ -135,6 +148,10 @@ final class ResponseParser
         return $content;
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     * @param  array<string, mixed>  $usage
+     */
     private function detectCompaction(array $content, array $usage): bool
     {
         if (array_any($content, fn (mixed $b): bool => is_array($b) && ($b['type'] ?? '') === 'compaction')) {
@@ -144,6 +161,10 @@ final class ResponseParser
         return ! empty($usage['iterations'] ?? []);
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     * @return list<array<string, mixed>>
+     */
     private function collectMemoryToolUses(array $content): array
     {
         $memoryUses = [];
@@ -160,6 +181,10 @@ final class ResponseParser
         return $memoryUses;
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     * @return list<array<string, mixed>>
+     */
     private function extractCitations(array $content): array
     {
         $citations = [];
@@ -184,6 +209,10 @@ final class ResponseParser
         return $citations;
     }
 
+    /**
+     * @param  array<string, mixed>  $usage
+     * @return array<string, int>
+     */
     private function extractServerToolUseCounts(array $usage): array
     {
         $counts = [
@@ -205,6 +234,10 @@ final class ResponseParser
         return $counts;
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     * @param  list<array<string, string>>  $warnings
+     */
     private function collectBlockWarnings(array $content, array &$warnings): void
     {
         $knownTypes = [
@@ -232,6 +265,9 @@ final class ResponseParser
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $usage
+     */
     private function extractCacheCreationTokens(array $usage, string $ttl): int
     {
         $breakpoints = $usage['cache_creation_input_tokens_breakdown'] ?? [];
@@ -249,6 +285,9 @@ final class ResponseParser
         return 0;
     }
 
+    /**
+     * @param  array<string, mixed>  $usage
+     */
     private function countServerToolUse(array $usage, string $toolType): int
     {
         $serverToolUse = $usage['server_tool_use'] ?? [];
@@ -262,6 +301,9 @@ final class ResponseParser
         return 0;
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     */
     private function headerValue(array $headers, string $name): ?string
     {
         foreach ($headers as $key => $value) {

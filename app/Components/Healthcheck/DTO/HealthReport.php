@@ -9,6 +9,9 @@ use Carbon\Carbon;
 
 final readonly class HealthReport
 {
+    /**
+     * @param  array<string, array<string, mixed>>  $components
+     */
     public function __construct(
         public HealthStatus $overall,
         public array $components,

@@ -36,6 +36,9 @@ final readonly class Batch
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [

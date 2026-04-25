@@ -8,6 +8,9 @@ use Illuminate\Foundation\Http\FormRequest;
 
 final class PaginateHistoryRequest extends FormRequest
 {
+    /**
+     * @return array<string, string>
+     */
     public function rules(): array
     {
         return [

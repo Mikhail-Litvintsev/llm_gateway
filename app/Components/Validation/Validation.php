@@ -13,6 +13,9 @@ final class Validation
         private readonly MessageRequestValidator $validator,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function validateMessageRequest(array $payload, ValidationContext $ctx, Client $client): ValidationResult
     {
         return $this->validator->validate($payload, $ctx, $client);

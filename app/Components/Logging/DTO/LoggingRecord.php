@@ -11,6 +11,11 @@ use DateTimeImmutable;
 
 final readonly class LoggingRecord
 {
+    /**
+     * @param  array<string, mixed>|null  $costBreakdown
+     * @param  array<int, array<string, mixed>>|null  $iterationsJson
+     * @param  array<string, string>|null  $rateLimitHeaders
+     */
     public function __construct(
         public string $requestId,
         public int $clientId,

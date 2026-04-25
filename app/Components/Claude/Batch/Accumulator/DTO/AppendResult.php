@@ -12,6 +12,9 @@ final readonly class AppendResult
         public string $customId,
     ) {}
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [

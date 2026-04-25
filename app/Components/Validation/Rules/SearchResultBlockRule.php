@@ -8,6 +8,9 @@ use App\Components\Validation\DTO\ValidationError;
 
 final class SearchResultBlockRule
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload): ?ValidationError
     {
         foreach ($payload['messages'] ?? [] as $mi => $message) {
@@ -30,6 +33,9 @@ final class SearchResultBlockRule
         return null;
     }
 
+    /**
+     * @param  array<string, mixed>  $block
+     */
     private function validateBlock(array $block, string $path): ?ValidationError
     {
         $allowedKeys = ['type', 'title', 'source', 'content', 'citations'];

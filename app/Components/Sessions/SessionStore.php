@@ -74,6 +74,9 @@ final class SessionStore implements SessionStoreContract
         );
     }
 
+    /**
+     * @param  array<int, mixed>  $content
+     */
     public function appendUserMessage(Session $session, array $content): SessionMessage
     {
         return $this->db->transaction(function () use ($session, $content): SessionMessage {
@@ -93,6 +96,10 @@ final class SessionStore implements SessionStoreContract
         });
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     * @param  array<string, mixed>  $usage
+     */
     public function appendAssistantMessage(
         Session $session,
         array $content,
@@ -120,6 +127,9 @@ final class SessionStore implements SessionStoreContract
         });
     }
 
+    /**
+     * @return list<array{role: string, content: array<int, array<string, mixed>>}>
+     */
     public function loadFullHistory(Session $session): array
     {
         return $session->messages()
@@ -177,6 +187,10 @@ final class SessionStore implements SessionStoreContract
         return $max === null ? 0 : ((int) $max + 1);
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>|null  $mcpServers
+     * @return array<int, array<string, mixed>>|null
+     */
     public function decryptMcpTokens(?array $mcpServers): ?array
     {
         if ($mcpServers === null) {
@@ -192,6 +206,10 @@ final class SessionStore implements SessionStoreContract
         return $mcpServers;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>|null  $mcpServers
+     * @return array<int, array<string, mixed>>|null
+     */
     private function encryptMcpTokens(?array $mcpServers): ?array
     {
         if ($mcpServers === null) {

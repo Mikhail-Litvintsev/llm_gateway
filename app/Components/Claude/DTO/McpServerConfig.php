@@ -8,6 +8,10 @@ use InvalidArgumentException;
 
 final readonly class McpServerConfig
 {
+    /**
+     * @param  array<string, mixed>|null  $defaultConfig
+     * @param  array<string, array<string, mixed>>|null  $configs
+     */
     public function __construct(
         public string $type,
         public string $url,
@@ -29,6 +33,9 @@ final readonly class McpServerConfig
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public static function fromArray(array $data): self
     {
         return new self(
@@ -41,6 +48,9 @@ final readonly class McpServerConfig
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toPayload(): array
     {
         $payload = [

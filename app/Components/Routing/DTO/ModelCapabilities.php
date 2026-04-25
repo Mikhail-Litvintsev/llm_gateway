@@ -21,6 +21,9 @@ final readonly class ModelCapabilities
         public ?Carbon $fetchedAt = null,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public static function fromApi(array $data): self
     {
         $caps = $data['capabilities'] ?? [];
@@ -39,6 +42,9 @@ final readonly class ModelCapabilities
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $cfg
+     */
     public static function fromConfig(string $modelId, array $cfg): self
     {
         return new self(
@@ -54,6 +60,9 @@ final readonly class ModelCapabilities
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [

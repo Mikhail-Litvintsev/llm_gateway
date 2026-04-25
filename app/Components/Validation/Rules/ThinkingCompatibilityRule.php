@@ -8,6 +8,9 @@ use App\Components\Validation\DTO\ValidationError;
 
 final class ThinkingCompatibilityRule
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload): ?ValidationError
     {
         $thinking = $payload['thinking'] ?? null;
@@ -56,6 +59,9 @@ final class ThinkingCompatibilityRule
         return null;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function checkSamplingConstraints(array $payload): ?ValidationError
     {
         if (isset($payload['tool_choice'])) {

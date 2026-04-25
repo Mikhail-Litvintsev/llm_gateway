@@ -6,6 +6,9 @@ namespace App\Components\Claude\DTO;
 
 final readonly class UsageData
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $iterations
+     */
     public function __construct(
         public int $inputTokens,
         public int $outputTokens,

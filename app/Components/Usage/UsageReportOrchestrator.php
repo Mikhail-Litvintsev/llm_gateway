@@ -14,7 +14,10 @@ final readonly class UsageReportOrchestrator
         private UsageReportFetcher $fetcher,
     ) {}
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $queryParams
+     * @return array<string, mixed>
+     */
     public function getUsage(Client $client, array $queryParams): array
     {
         $allowedFeatures = $client->allowed_features ?? [];

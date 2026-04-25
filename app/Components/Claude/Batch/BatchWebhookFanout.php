@@ -67,6 +67,9 @@ final readonly class BatchWebhookFanout
         $this->dispatchWebhook($batch, $payload);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function dispatchWebhook(BatchRecord $batch, array $payload): void
     {
         Log::channel('llm')->info('Batch webhook dispatched', [

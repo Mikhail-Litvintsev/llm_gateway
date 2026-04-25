@@ -152,6 +152,9 @@ final readonly class Claude implements MessageSender
      *
      * @throws RateLimitExceededException
      */
+    /**
+     * @param  list<string>  $features
+     */
     public function streamMessage(
         SendMessageInput $input,
         Client $client,
@@ -426,6 +429,9 @@ final readonly class Claude implements MessageSender
         return new FileListPage($files, $nextCursor);
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     */
     private function handleSuccess(
         string $rawBody,
         array $headers,
@@ -460,6 +466,9 @@ final readonly class Claude implements MessageSender
         );
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     */
     private function handleError(
         string $rawBody,
         array $headers,
@@ -506,6 +515,10 @@ final readonly class Claude implements MessageSender
         return array_merge($headers, $extraHeaders);
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $responseHeaders
+     * @return array<string, string>
+     */
     private function filterAnthropicHeaders(array $responseHeaders): array
     {
         $allowed = ['request-id', 'anthropic-organization-id'];
@@ -521,6 +534,9 @@ final readonly class Claude implements MessageSender
         return $filtered;
     }
 
+    /**
+     * @return array<string, float>
+     */
     private function buildCostBreakdownArray(CostBreakdown $breakdown): array
     {
         return [

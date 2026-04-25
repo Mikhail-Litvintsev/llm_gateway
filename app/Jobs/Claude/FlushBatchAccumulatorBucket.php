@@ -78,6 +78,9 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
         }
     }
 
+    /**
+     * @return array<int, mixed>
+     */
     private function atomicFlush(): array
     {
         $keys = [
@@ -94,6 +97,10 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
         return Redis::connection('default')->eval($script, 4, ...$keys);
     }
 
+    /**
+     * @param  array<int, mixed>  $raw
+     * @return list<array<string, mixed>>
+     */
     private function parseFlushResult(array $raw): array
     {
         $items = [];
@@ -114,6 +121,9 @@ final class FlushBatchAccumulatorBucket implements ShouldQueue
         return $items;
     }
 
+    /**
+     * @param  array<int, mixed>  $raw
+     */
     private function extractCallbackUrl(array $raw): ?string
     {
         $metaSeparatorIndex = array_search('---META---', $raw, true);

@@ -10,6 +10,9 @@ use Closure;
 
 final readonly class StreamContext
 {
+    /**
+     * @param  list<string>  $featuresUsed
+     */
     public function __construct(
         public BuiltPayload $payload,
         public Client $client,

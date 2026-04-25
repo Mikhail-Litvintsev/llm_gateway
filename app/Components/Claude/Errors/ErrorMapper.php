@@ -44,6 +44,9 @@ final class ErrorMapper
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $event
+     */
     public function mapStreamErrorEvent(array $event): string
     {
         $type = $event['error']['type'] ?? 'unknown';

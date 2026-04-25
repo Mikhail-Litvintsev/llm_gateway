@@ -8,6 +8,11 @@ use App\Components\Delivery\Sync\DTO\AnthropicResponseEnvelope;
 
 final readonly class SendMessageOutput
 {
+    /**
+     * @param  array<string, mixed>|null  $parsedResponse
+     * @param  array<string, mixed>|null  $usage
+     * @param  array<string, mixed>  $costBreakdown
+     */
     public function __construct(
         public AnthropicResponseEnvelope $envelope,
         public ?array $parsedResponse,

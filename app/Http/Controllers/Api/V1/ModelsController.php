@@ -126,6 +126,9 @@ final class ModelsController extends Controller
             ->header('X-Gateway-Request-Id', Str::uuid()->toString());
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     private function fetchLive(string $snapshot, Client $client): ?array
     {
         $cacheKey = "claude:models_live:$snapshot";

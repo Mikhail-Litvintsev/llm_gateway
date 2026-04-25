@@ -9,6 +9,9 @@ use App\Components\Validation\DTO\ValidationError;
 
 final class PtcContractRule
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload): ?ValidationError
     {
         $tools = $payload['tools'] ?? [];
@@ -32,6 +35,10 @@ final class PtcContractRule
         return $this->checkIncompatibilities($payload, $tools);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<int, mixed>  $tools
+     */
     private function checkIncompatibilities(array $payload, array $tools): ?ValidationError
     {
         foreach ($tools as $tool) {

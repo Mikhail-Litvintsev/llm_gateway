@@ -20,6 +20,9 @@ final readonly class MemoryHandler
         private DatabaseManager $db,
     ) {}
 
+    /**
+     * @param  array<string, mixed>  $toolUse
+     */
     public function execute(Session $session, array $toolUse): MemoryCommandResult
     {
         $toolUseId = $toolUse['id'] ?? '';
@@ -48,6 +51,9 @@ final readonly class MemoryHandler
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function view(Session $session, array $input): string
     {
         $path = MemoryPathValidator::validate($input['path'] ?? '', allowRoot: true);
@@ -62,6 +68,9 @@ final readonly class MemoryHandler
         return $this->viewDirectory($session, $path);
     }
 
+    /**
+     * @param  array{0?: int|string, 1?: int|string}|null  $viewRange
+     */
     private function viewFile(SessionMemoryFile $file, ?array $viewRange): string
     {
         $lines = explode("\n", $file->content);
@@ -103,6 +112,9 @@ final readonly class MemoryHandler
         return implode("\n", $paths);
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function create(Session $session, array $input): string
     {
         $path = MemoryPathValidator::validate($input['path'] ?? '', allowRoot: false);
@@ -118,6 +130,9 @@ final readonly class MemoryHandler
         return "File created successfully at $path";
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function strReplace(Session $session, array $input): string
     {
         $path = MemoryPathValidator::validate($input['path'] ?? '', allowRoot: false);
@@ -139,6 +154,9 @@ final readonly class MemoryHandler
         });
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function insert(Session $session, array $input): string
     {
         $path = MemoryPathValidator::validate($input['path'] ?? '', allowRoot: false);
@@ -161,6 +179,9 @@ final readonly class MemoryHandler
         });
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function delete(Session $session, array $input): string
     {
         $path = MemoryPathValidator::validate($input['path'] ?? '', allowRoot: false);
@@ -183,6 +204,9 @@ final readonly class MemoryHandler
         });
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     private function rename(Session $session, array $input): string
     {
         $oldPath = MemoryPathValidator::validate($input['old_path'] ?? '', allowRoot: false);

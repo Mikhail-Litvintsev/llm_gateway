@@ -31,6 +31,7 @@ final class RateLimitHeaderParser
     ];
 
     /**
+     * @param  array<string, string|list<string>>  $headers
      * @return array<string, string|int|null>
      */
     public function parse(array $headers, RateLimitNamespace $ns): array
@@ -46,6 +47,10 @@ final class RateLimitHeaderParser
         return $result;
     }
 
+    /**
+     * @param  array<string, string|list<string>>  $headers
+     * @return array<string, string>
+     */
     private function normalizeHeaders(array $headers): array
     {
         $normalized = [];

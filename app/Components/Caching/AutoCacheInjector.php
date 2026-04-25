@@ -70,6 +70,9 @@ class AutoCacheInjector
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function hasCacheControl(array $payload): bool
     {
         if (array_key_exists('cache_control', $payload)) {
@@ -94,6 +97,9 @@ class AutoCacheInjector
         return false;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function countPrefixChars(array $payload): int
     {
         $chars = 0;
@@ -127,6 +133,9 @@ class AutoCacheInjector
         return $chars;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $tools
+     */
     private function countCharsInTools(array $tools): int
     {
         if ($tools === []) {
@@ -136,6 +145,9 @@ class AutoCacheInjector
         return mb_strlen((string) json_encode($tools));
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     */
     private function countCharsInMessagesExceptLast(array $messages): int
     {
         if (count($messages) <= 1) {
@@ -246,6 +258,9 @@ class AutoCacheInjector
         return $payload;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function countCacheControlMarkers(array $payload): int
     {
         $count = 0;

@@ -42,6 +42,7 @@ final class FileSourceResolver
     }
 
     /**
+     * @param  array{type: string, file_id: string}  $source
      * @return array{type: string, file_id: string}
      */
     private function handleExternalFileId(array $source, bool $allowRawAnthropicFileIds): array
@@ -56,6 +57,7 @@ final class FileSourceResolver
     }
 
     /**
+     * @param  array{type: string, file_id: string}  $source
      * @return array{type: string, file_id: string}
      */
     private function resolveOurFileId(array $source, string $fileId, int $clientId): array

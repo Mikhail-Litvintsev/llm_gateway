@@ -42,6 +42,9 @@ final class Healthcheck
         );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function checkDb(): array
     {
         $startMs = microtime(true);
@@ -62,6 +65,9 @@ final class Healthcheck
         }
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function checkRedis(): array
     {
         $startMs = microtime(true);
@@ -82,6 +88,9 @@ final class Healthcheck
         }
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function readAnthropicCached(): array
     {
         $cached = Redis::connection('cache')->get('claude:healthcheck:anthropic');

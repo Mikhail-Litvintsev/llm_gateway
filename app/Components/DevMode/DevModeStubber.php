@@ -135,6 +135,9 @@ final class DevModeStubber
         ]);
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
     private function buildContentBlocks(MessageRequest $request): array
     {
         $blocks = [];

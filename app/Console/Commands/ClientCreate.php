@@ -63,6 +63,10 @@ final class ClientCreate extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * @param  list<string>  $rawFeatures
+     * @return array<string, bool>
+     */
     private function parseFeatures(array $rawFeatures): array
     {
         $features = [];

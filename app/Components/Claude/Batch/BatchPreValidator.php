@@ -37,6 +37,9 @@ final class BatchPreValidator
         $this->validatePayloadSize($items);
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
     private function validateCustomIdUniqueness(array $items): void
     {
         $seen = [];
@@ -49,6 +52,9 @@ final class BatchPreValidator
         }
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
     private function validateItems(array $items, Client $client): void
     {
         $customIdPattern = '/^[a-zA-Z0-9_-]{1,64}$/';
@@ -76,6 +82,9 @@ final class BatchPreValidator
         }
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
     private function validatePayloadSize(array $items): void
     {
         $maxBytes = (int) config('llm.max_batch_payload_mb', 256) * 1024 * 1024;

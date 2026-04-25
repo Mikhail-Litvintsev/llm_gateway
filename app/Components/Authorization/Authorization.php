@@ -42,6 +42,9 @@ final class Authorization
         return $this->checkSpendCap($client);
     }
 
+    /**
+     * @param  array<string, mixed>  $allowedFeatures
+     */
     private function checkModelWhitelist(array $allowedFeatures, string $modelAlias): AuthorizationResult
     {
         $models = $allowedFeatures['models'] ?? [];
@@ -60,6 +63,10 @@ final class Authorization
         return AuthorizationResult::allow();
     }
 
+    /**
+     * @param  array<string, mixed>  $allowedFeatures
+     * @param  list<string>  $featuresUsed
+     */
     private function checkFeatureWhitelist(array $allowedFeatures, array $featuresUsed): AuthorizationResult
     {
         foreach ($featuresUsed as $feature) {
@@ -75,6 +82,9 @@ final class Authorization
         return AuthorizationResult::allow();
     }
 
+    /**
+     * @param  array<string, mixed>  $allowedFeatures
+     */
     private function isFeatureAllowed(array $allowedFeatures, string $feature): bool
     {
         if (array_key_exists($feature, $allowedFeatures)) {

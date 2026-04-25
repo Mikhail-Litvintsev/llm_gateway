@@ -8,6 +8,9 @@ use App\Components\Caching\Enums\CacheInjectionOutcome;
 
 readonly class CacheInjectionResult
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function __construct(
         public array $payload,
         public CacheInjectionOutcome $outcome,

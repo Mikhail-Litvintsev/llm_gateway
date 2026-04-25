@@ -6,6 +6,16 @@ namespace App\Components\Claude\DTO;
 
 final readonly class MessageResponse
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     * @param  array<string, mixed>  $usage
+     * @param  array<string, string>  $rateLimitHeaders
+     * @param  array<string, int>  $serverToolUseCounts
+     * @param  array<int, array<string, mixed>>  $iterations
+     * @param  array<int, array<string, mixed>>  $memoryToolUses
+     * @param  array<int, array<string, mixed>>  $citations
+     * @param  list<array<string, string>>  $warnings
+     */
     public function __construct(
         public string $anthropicId,
         public string $role,

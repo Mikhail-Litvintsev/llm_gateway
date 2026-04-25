@@ -6,6 +6,9 @@ namespace App\Components\Pricing\DTO;
 
 final readonly class CostBreakdown
 {
+    /**
+     * @param  array<int, array<string, mixed>>  $iterationsSnapshot
+     */
     public function __construct(
         public Money $inputCost,
         public Money $outputCost,

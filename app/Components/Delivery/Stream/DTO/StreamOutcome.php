@@ -6,6 +6,10 @@ namespace App\Components\Delivery\Stream\DTO;
 
 final readonly class StreamOutcome
 {
+    /**
+     * @param  array<string, mixed>  $costBreakdown
+     * @param  array<string, string>|null  $anthropicHeaders
+     */
     public function __construct(
         public StreamAggregate $aggregate,
         public float $costUsd,

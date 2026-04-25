@@ -20,6 +20,9 @@ final class PayloadBuilder
 
     private const int JSON_OPTIONS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
+    /**
+     * @param  array<string, string>  $betaHeaderMap
+     */
     public function __construct(
         private readonly ModelResolver $models,
         private readonly FileSourceResolver $fileSourceResolver,
@@ -120,6 +123,10 @@ final class PayloadBuilder
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $capabilities
+     */
     private function enforceMaxTokensCap(array $payload, array $capabilities, string $alias): void
     {
         $maxTokens = $payload['max_tokens'] ?? null;
@@ -132,6 +139,10 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $capabilities
+     */
     private function enforcePrefillCompatibility(array $payload, array $capabilities, string $alias): void
     {
         $messages = $payload['messages'] ?? [];
@@ -149,6 +160,11 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $capabilities
+     * @param  list<array<string, string>>  $warnings
+     */
     private function validateThinking(
         ThinkingSpec $spec,
         array $payload,
@@ -169,6 +185,9 @@ final class PayloadBuilder
         $this->validateSamplingWithThinking($payload);
     }
 
+    /**
+     * @param  array<string, mixed>  $capabilities
+     */
     private function validateAdaptiveThinking(ThinkingSpec $spec, array $capabilities, string $alias): void
     {
         if (! ($capabilities['supports_adaptive_thinking'] ?? false)) {
@@ -181,6 +200,11 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $capabilities
+     * @param  list<array<string, string>>  $warnings
+     */
     private function validateManualThinking(
         ThinkingSpec $spec,
         array $payload,
@@ -214,6 +238,9 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function validateSamplingWithThinking(array $payload): void
     {
         if (isset($payload['tool_choice'])) {
@@ -235,6 +262,9 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function buildThinkingPayload(ThinkingSpec $spec): array
     {
         return match ($spec->mode) {
@@ -250,6 +280,9 @@ final class PayloadBuilder
         };
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function enforceCitationsVsStructuredOutput(array $payload): void
     {
         $citationsEnabled = ($payload['citations']['enabled'] ?? false) === true;
@@ -262,6 +295,9 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function enforceServiceTierPermission(array $payload, Client $client): void
     {
         $serviceTier = $payload['service_tier'] ?? null;
@@ -279,6 +315,9 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function enforceInferenceGeo(array $payload, Client $client): void
     {
         $inferenceGeo = $payload['inference_geo'] ?? null;
@@ -306,6 +345,10 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private function normaliseMessageContent(array $messages): array
     {
         foreach ($messages as &$message) {
@@ -325,6 +368,10 @@ final class PayloadBuilder
         return $messages;
     }
 
+    /**
+     * @param  array<string, mixed>  $block
+     * @return array<string, mixed>
+     */
     private function normaliseSearchResultBlock(array $block): array
     {
         $allowedKeys = ['type', 'title', 'source', 'content', 'citations'];
@@ -361,6 +408,10 @@ final class PayloadBuilder
         return $block;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private function resolveFileSourcesInMessages(array $messages, Client $client): array
     {
         $clientId = (int) $client->id;
@@ -391,6 +442,10 @@ final class PayloadBuilder
         return $messages;
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
     private function assemblePayload(array $input, ResolvedModel $resolved): array
     {
         $payload = [
@@ -470,7 +525,11 @@ final class PayloadBuilder
         return $payload;
     }
 
-    /** @return string[] */
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $capabilities
+     * @return list<string>
+     */
     private function detectBetaFeatures(array $payload, array $capabilities): array
     {
         $features = [];
@@ -514,7 +573,10 @@ final class PayloadBuilder
         return array_unique($features);
     }
 
-    /** @return string[] */
+    /**
+     * @param  list<string>  $features
+     * @return list<string>
+     */
     private function collectBetaHeaders(array $features): array
     {
         $headers = [];
@@ -530,6 +592,9 @@ final class PayloadBuilder
         return array_unique($headers);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function serialize(array $payload): string
     {
         return json_encode($payload, self::JSON_OPTIONS);
@@ -547,7 +612,10 @@ final class PayloadBuilder
         ToolTypeCatalog::COMPUTER,
     ];
 
-    /** @return array{array, string[], bool} [normalisedTools, serverToolTypes, hasPtcTool] */
+    /**
+     * @param  array<int, array<string, mixed>>  $rawTools
+     * @return array{0: array<int, array<string, mixed>>, 1: list<string>, 2: bool} [normalisedTools, serverToolTypes, hasPtcTool]
+     */
     private function normaliseTools(array $rawTools): array
     {
         $serverToolTypes = [];
@@ -599,6 +667,10 @@ final class PayloadBuilder
         return [$normalised, $serverToolTypes, $hasPtcTool];
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseServerTool(string $type, array $tool): array
     {
         return match ($type) {
@@ -615,6 +687,10 @@ final class PayloadBuilder
         };
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseWebSearch(array $tool): array
     {
         $allowed = ['type', 'name', 'max_uses', 'allowed_domains', 'blocked_domains', 'user_location'];
@@ -629,6 +705,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseWebFetch(array $tool): array
     {
         $allowed = ['type', 'name', 'max_content_tokens', 'citations'];
@@ -643,6 +723,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseCodeExecution(array $tool): array
     {
         $allowed = ['type', 'name', 'container'];
@@ -651,6 +735,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseToolSearch(array $tool): array
     {
         $allowed = ['type', 'name', 'max_results'];
@@ -659,6 +747,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseMemory(array $tool): array
     {
         $allowed = ['type', 'name'];
@@ -667,6 +759,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseBash(array $tool): array
     {
         $allowed = ['type', 'name'];
@@ -675,6 +771,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseTextEditor(array $tool): array
     {
         $allowed = ['type', 'name'];
@@ -683,6 +783,10 @@ final class PayloadBuilder
         return $this->pickKeys($tool, $allowed);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseComputer(array $tool): array
     {
         $allowed = ['type', 'name', 'display_width_px', 'display_height_px', 'display_number'];
@@ -700,6 +804,10 @@ final class PayloadBuilder
         return $result;
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseCustomTool(array $tool, bool $hasCodeExecution): array
     {
         if (! isset($tool['allowed_callers'])) {
@@ -709,6 +817,10 @@ final class PayloadBuilder
         return $this->normaliseCustomToolWithPtc($tool, $hasCodeExecution);
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @return array<string, mixed>
+     */
     private function normaliseCustomToolWithPtc(array $tool, bool $hasCodeExecution): array
     {
         $callers = $tool['allowed_callers'];
@@ -742,6 +854,10 @@ final class PayloadBuilder
         return $tool;
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @param  list<string>  $allowed
+     */
     private function rejectUnknownKeys(array $tool, array $allowed, string $type): void
     {
         $unknown = array_diff(array_keys($tool), $allowed);
@@ -754,11 +870,19 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $tool
+     * @param  list<string>  $keys
+     * @return array<string, mixed>
+     */
     private function pickKeys(array $tool, array $keys): array
     {
         return array_intersect_key($tool, array_flip($keys));
     }
 
+    /**
+     * @param  list<string>  $serverToolTypes
+     */
     private function enforceMemoryUniqueness(array $serverToolTypes): void
     {
         $memoryCount = 0;
@@ -773,6 +897,10 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $capabilities
+     * @return list<array<string, mixed>>
+     */
     private function assembleContextManagementEdits(
         ContextManagementConfig $config,
         array $capabilities,
@@ -800,6 +928,9 @@ final class PayloadBuilder
         return $edits;
     }
 
+    /**
+     * @param  array<string, mixed>  $capabilities
+     */
     private function requireContextManagementSupport(array $capabilities, string $alias): void
     {
         if (! ($capabilities['supports_context_management_edits'] ?? true)) {
@@ -807,6 +938,9 @@ final class PayloadBuilder
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function hasCacheControlInMessages(array $payload): bool
     {
         foreach ($payload['messages'] ?? [] as $message) {
@@ -826,6 +960,9 @@ final class PayloadBuilder
         return false;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function hasFileContent(array $payload): bool
     {
         return array_any(
@@ -837,11 +974,17 @@ final class PayloadBuilder
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function hasMcpServers(array $payload): bool
     {
         return ! empty($payload['mcp_servers']);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function hasComputerUseTool(array $payload): bool
     {
         return array_any(

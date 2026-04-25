@@ -180,6 +180,9 @@ final class BatchesController extends Controller
         return $batch;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function buildShowResponse(BatchRecord $batch): array
     {
         return [

@@ -8,6 +8,9 @@ use App\Components\Validation\DTO\ValidationError;
 
 final class CitationsConsistencyRule
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload): ?ValidationError
     {
         $blocks = $this->collectCitableBlocks($payload);
@@ -47,6 +50,10 @@ final class CitationsConsistencyRule
         return null;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<array<string, mixed>>
+     */
     private function collectCitableBlocks(array $payload): array
     {
         $blocks = [];

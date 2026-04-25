@@ -13,6 +13,9 @@ final class CostCalculator
 {
     private const string SCALE = '1000000';
 
+    /**
+     * @param  array<string, mixed>  $pricingConfig
+     */
     public function __construct(
         private readonly array $pricingConfig,
         private readonly float $geoUsMultiplier,

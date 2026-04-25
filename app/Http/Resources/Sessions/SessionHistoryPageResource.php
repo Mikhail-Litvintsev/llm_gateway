@@ -15,6 +15,9 @@ final class SessionHistoryPageResource extends JsonResource
         parent::__construct($resource);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         /** @var SessionHistoryPage $page */

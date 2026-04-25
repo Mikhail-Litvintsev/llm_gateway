@@ -11,6 +11,9 @@ final class MemoryModelGateRule
 {
     private const array BLOCKED_MODELS = ['claude-opus'];
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function check(array $payload): ?ValidationError
     {
         $hasMemory = array_any(

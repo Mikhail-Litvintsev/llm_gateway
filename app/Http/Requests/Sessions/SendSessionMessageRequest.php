@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Requests\Sessions;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 final class SendSessionMessageRequest extends FormRequest
 {
+    /**
+     * @return array<string, string>
+     */
     public function rules(): array
     {
         return [
@@ -19,9 +23,9 @@ final class SendSessionMessageRequest extends FormRequest
         ];
     }
 
-    public function withValidator($validator): void
+    public function withValidator(Validator $validator): void
     {
-        $validator->after(function ($validator) {
+        $validator->after(function (Validator $validator): void {
             $forbidden = ['model_alias', 'system', 'tools', 'context_management'];
             foreach ($forbidden as $field) {
                 if ($this->has($field)) {

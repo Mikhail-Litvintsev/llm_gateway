@@ -18,8 +18,15 @@ interface SessionStoreContract
 
     public function getMetadata(Session $session): SessionMetadata;
 
+    /**
+     * @param  array<int, mixed>  $content
+     */
     public function appendUserMessage(Session $session, array $content): SessionMessage;
 
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     * @param  array<string, mixed>  $usage
+     */
     public function appendAssistantMessage(
         Session $session,
         array $content,
@@ -28,6 +35,9 @@ interface SessionStoreContract
         string $model,
     ): SessionMessage;
 
+    /**
+     * @return list<array{role: string, content: array<int, array<string, mixed>>}>
+     */
     public function loadFullHistory(Session $session): array;
 
     public function paginateHistory(Session $session, int $from, int $limit): SessionHistoryPage;
@@ -36,5 +46,9 @@ interface SessionStoreContract
 
     public function softDelete(Session $session): void;
 
+    /**
+     * @param  array<int, array<string, mixed>>|null  $mcpServers
+     * @return array<int, array<string, mixed>>|null
+     */
     public function decryptMcpTokens(?array $mcpServers): ?array;
 }
