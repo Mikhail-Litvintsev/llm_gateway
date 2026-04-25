@@ -60,7 +60,7 @@ Format inspired by Michael Nygard's ADR template. Dates are in ISO-8601.
 - **Decision:** `DeliverWebhook` uses `$tries = 1` deliberately. The job is a single delivery attempt; retry state lives in `async_pending.{callback_attempts, next_attempt_at, status}`. A scheduler (`RetryFailedWebhooks`, `routes/console.php`) runs every minute and dispatches the next `DeliverWebhook` for each row whose `next_attempt_at <= now()`.
 - **Consequences:** Retry state is queryable and survives worker restarts. The grace-period rotation for the signing secret works naturally because the scheduler always re-reads the row. The downside: delivery bias is ≤1 minute (scheduler resolution) — not meaningful for webhooks that already have multi-second backoff.
 - **Revisit trigger:** Migration to a workflow engine (Temporal / Cadence) — then the state machine moves out of the DB into the workflow definition.
-- **Related:** `app/Jobs/DeliverWebhook.php`, `app/Jobs/Scheduled/RetryFailedWebhooks.php`, Phase 3 "Важно про два разных паттерна retries".
+- **Related:** `app/Jobs/DeliverWebhook.php`, `app/Jobs/Scheduled/RetryFailedWebhooks.php`, Phase 3 "Важно про два разных паттерна retries". Scheduler hot-path is covered by composite index `async_pending_next_attempt_status_idx` on `(next_attempt_at, status)` — leading column has high selectivity so range scan over `next_attempt_at <= NOW()` is index-bound.
 
 ---
 
