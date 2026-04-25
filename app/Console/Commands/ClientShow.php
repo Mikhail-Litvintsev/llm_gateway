@@ -74,9 +74,9 @@ final class ClientShow extends Command
                 ['Monthly Cap', $capUsd],
                 ['Month Spend', $spentUsd],
                 ['Remaining', $remaining],
-                ['Requests (this month)', (string) ($monthlyStats->total_requests ?? 0)],
-                ['Failed Requests', (string) ($monthlyStats->failed_requests ?? 0)],
-                ['Avg Latency (s)', $monthlyStats->avg_latency_seconds !== null ? number_format((float) $monthlyStats->avg_latency_seconds, 2) : 'n/a'],
+                ['Requests (this month)', (string) ($monthlyStats !== null ? $monthlyStats->total_requests : 0)],
+                ['Failed Requests', (string) ($monthlyStats !== null ? $monthlyStats->failed_requests : 0)],
+                ['Avg Latency (s)', $monthlyStats?->avg_latency_seconds !== null ? number_format((float) $monthlyStats->avg_latency_seconds, 2) : 'n/a'],
                 ['Top Models', $topModels->isEmpty() ? 'none' : $topModels->map(fn ($count, $alias) => "{$alias} ({$count})")->implode(', ')],
             ],
         );

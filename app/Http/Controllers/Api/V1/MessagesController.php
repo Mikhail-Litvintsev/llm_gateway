@@ -130,7 +130,7 @@ final class MessagesController extends Controller
 
         $details = $this->requests->findDetails($requestId, $this->shouldIncludeResponse($request));
 
-        if (! $details->exists() || $details->request->client_id !== $client->id) {
+        if ($details->request === null || $details->request->client_id !== $client->id) {
             return $this->errorResponder->notFound('request not found', $requestId);
         }
 

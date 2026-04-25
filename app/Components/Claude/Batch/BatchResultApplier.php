@@ -56,6 +56,9 @@ final readonly class BatchResultApplier
             $usageData = $this->responseParser->extractUsageData($usage);
 
             $client = $batch->client;
+            if ($client === null) {
+                throw new \RuntimeException("Client not found for batch {$batch->batch_id} (client_id={$batch->client_id})");
+            }
             $costBreakdown = $this->costCalculator->calculate(
                 $usageData,
                 $modelAlias,

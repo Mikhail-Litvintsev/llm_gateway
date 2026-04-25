@@ -18,8 +18,8 @@ use Illuminate\Support\Carbon;
  * @property int $size_bytes
  * @property string $upload_purpose
  * @property bool $is_deleted
- * @property ?Carbon $created_at
- * @property ?Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 final class FileRecord extends Model
 {

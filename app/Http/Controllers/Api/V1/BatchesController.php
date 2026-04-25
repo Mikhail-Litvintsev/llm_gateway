@@ -77,7 +77,7 @@ final class BatchesController extends Controller
 
         $this->canceler->cancel($batch);
 
-        return response()->json($this->buildShowResponse($batch->fresh()));
+        return response()->json($this->buildShowResponse($batch->refresh()));
     }
 
     public function destroy(Request $request, string $batchId): Response

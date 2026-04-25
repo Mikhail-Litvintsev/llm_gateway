@@ -381,6 +381,9 @@ final readonly class Claude implements MessageSender
         }
 
         $client = $record->client;
+        if ($client === null) {
+            throw new \RuntimeException("Client not found for file {$fileId} (client_id={$record->client_id})");
+        }
         $this->filesDeletionHandler->delete($record, $client);
     }
 

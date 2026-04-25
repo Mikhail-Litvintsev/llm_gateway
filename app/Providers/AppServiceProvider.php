@@ -26,7 +26,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Opis\JsonSchema\Resolvers\SchemaResolver;
 use Opis\JsonSchema\Validator;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -68,11 +70,16 @@ class AppServiceProvider extends ServiceProvider
             $validator = new Validator;
             $schemasPath = app_path('Components/Validation/Schemas');
 
-            $validator->resolver()->registerFile(
+            $resolver = $validator->resolver();
+            if (! $resolver instanceof SchemaResolver) {
+                throw new RuntimeException('Opis JSON Schema resolver is not configured');
+            }
+
+            $resolver->registerFile(
                 'urn:gateway:message_request',
                 $schemasPath.'/message_request.json',
             );
-            $validator->resolver()->registerFile(
+            $resolver->registerFile(
                 'urn:gateway:batch_item',
                 $schemasPath.'/batch_item.json',
             );

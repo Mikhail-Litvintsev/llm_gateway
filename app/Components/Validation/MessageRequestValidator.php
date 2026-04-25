@@ -140,8 +140,13 @@ class MessageRequestValidator
         $result = $this->schemaValidator->validate($data, $schemaUri);
 
         if (! $result->isValid()) {
+            $error = $result->error();
+            if ($error === null) {
+                return;
+            }
+
             $formatter = new ErrorFormatter;
-            $formatted = $formatter->format($result->error());
+            $formatted = $formatter->format($error);
 
             foreach ($formatted as $path => $messages) {
                 foreach ($messages as $message) {

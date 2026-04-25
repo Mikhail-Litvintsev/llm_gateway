@@ -11,7 +11,7 @@ final readonly class WebhookEnvelope
     /**
      * @param  array<string, mixed>|null  $anthropicResponse
      * @param  array{type: string, message: string}|null  $error
-     * @param  array{cost_usd: float, cost_breakdown: array<string, mixed>, monthly_spend_after_usd: float, monthly_spend_remaining_usd: float}|null  $billing
+     * @param  array{cost_usd: float, cost_breakdown: array<string, mixed>, monthly_spend_after_usd: float, monthly_spend_remaining_usd: float|null}|null  $billing
      */
     public function __construct(
         public string $requestId,

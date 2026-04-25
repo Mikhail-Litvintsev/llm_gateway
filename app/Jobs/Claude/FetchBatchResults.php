@@ -55,7 +55,7 @@ final class FetchBatchResults implements ShouldQueue
         try {
             [$totalCost, $usageItems] = $this->processResults($batch, $workspaces, $parser, $applier, $responseParser);
             $this->finalizeBatch($batch, $totalCost, $cacheMetrics, $usageItems);
-            $fanout->fanout($batch->fresh());
+            $fanout->fanout($batch->refresh());
         } catch (\Throwable $e) {
             $batch->update(['status' => BatchStatus::Failed]);
 
@@ -76,7 +76,11 @@ final class FetchBatchResults implements ShouldQueue
         BatchResultApplier $applier,
         ResponseParser $responseParser,
     ): array {
-        $workspace = $workspaces->resolveForClient($batch->client);
+        $client = $batch->client;
+        if ($client === null) {
+            throw new \RuntimeException("Client not found for batch {$batch->batch_id} (client_id={$batch->client_id})");
+        }
+        $workspace = $workspaces->resolveForClient($client);
         $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id.'/results';
 
         $response = Http::withHeaders([

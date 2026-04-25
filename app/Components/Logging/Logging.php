@@ -283,6 +283,6 @@ final class Logging
 
     private function isDuplicateKeyException(QueryException $e): bool
     {
-        return $e->errorInfo[1] === 1062;
+        return ($e->errorInfo[1] ?? null) === 1062;
     }
 }

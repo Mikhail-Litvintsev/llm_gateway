@@ -49,6 +49,9 @@ final class SubmitBatchToAnthropic implements ShouldQueue
         ]);
 
         $client = $batch->client;
+        if ($client === null) {
+            throw new \RuntimeException("Client not found for batch {$batch->batch_id} (client_id={$batch->client_id})");
+        }
         $workspace = $workspaces->resolveForClient($client);
         $payload = $payloadBuilder->build($batch, $client);
 

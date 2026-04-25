@@ -6,6 +6,7 @@ namespace App\Components\Claude\Batch;
 
 use App\Components\Claude\Claude;
 use App\Models\BatchRecord;
+use App\Models\Client;
 use Generator;
 use Illuminate\Support\Facades\Log;
 
@@ -20,8 +21,11 @@ final class BatchResultsStreamer
      */
     public function stream(BatchRecord $batch): Generator
     {
-        if ($batch->anthropic_batch_id !== null && $batch->results_url !== null) {
-            yield from $this->streamFromAnthropic($batch);
+        $anthropicBatchId = $batch->anthropic_batch_id;
+        $client = $batch->client;
+
+        if ($anthropicBatchId !== null && $batch->results_url !== null && $client !== null) {
+            yield from $this->streamFromAnthropic($batch, $anthropicBatchId, $client);
 
             return;
         }
@@ -32,13 +36,12 @@ final class BatchResultsStreamer
     /**
      * @return Generator<string>
      */
-    private function streamFromAnthropic(BatchRecord $batch): Generator
+    private function streamFromAnthropic(BatchRecord $batch, string $anthropicBatchId, Client $client): Generator
     {
         try {
-            $client = $batch->client;
             $hasResults = false;
 
-            foreach ($this->claude->getBatchResults($batch->anthropic_batch_id, $client) as $resultLine) {
+            foreach ($this->claude->getBatchResults($anthropicBatchId, $client) as $resultLine) {
                 $hasResults = true;
                 yield json_encode([
                     'custom_id' => $resultLine->customId,

@@ -217,7 +217,11 @@ final readonly class Sessions implements SessionsContract
         $client = Client::findOrFail($session->client_id);
         $featuresUsed = $this->extractFeaturesFromTools($session->tools ?? []);
 
-        $authResult = $this->authorization->authorize($client, $session->model_alias, $featuresUsed);
+        $modelAlias = $session->model_alias
+            ?? $client->default_model_alias
+            ?? (string) config('llm.claude.default_model_alias');
+
+        $authResult = $this->authorization->authorize($client, $modelAlias, $featuresUsed);
         if (! $authResult->allowed) {
             throw new RuntimeException($authResult->message ?? 'Authorization denied', 403);
         }

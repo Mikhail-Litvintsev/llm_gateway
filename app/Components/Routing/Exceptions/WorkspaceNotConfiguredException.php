@@ -6,8 +6,9 @@ namespace App\Components\Routing\Exceptions;
 
 final class WorkspaceNotConfiguredException extends \RuntimeException
 {
-    public function __construct(int $id)
+    public function __construct(?int $id)
     {
-        parent::__construct("Workspace {$id} is not configured (missing or empty API key)");
+        $label = $id !== null ? (string) $id : 'unassigned';
+        parent::__construct("Workspace {$label} is not configured (missing or empty API key)");
     }
 }

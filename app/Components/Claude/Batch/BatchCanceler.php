@@ -33,10 +33,13 @@ final readonly class BatchCanceler
                 'status' => BatchItemStatus::Cancelled->value,
             ]);
 
-            return Batch::fromRecord($batch->fresh());
+            return Batch::fromRecord($batch->refresh());
         }
 
         $client = $batch->client;
+        if ($client === null) {
+            throw new \RuntimeException("Client not found for batch {$batch->batch_id} (client_id={$batch->client_id})");
+        }
         $workspace = $this->workspaces->resolveForClient($client);
         $endpoint = config('llm.claude.endpoints.batches').'/'.$batch->anthropic_batch_id.'/cancel';
 
@@ -53,13 +56,13 @@ final readonly class BatchCanceler
                 'status' => BatchItemStatus::Cancelled->value,
             ]);
 
-            return Batch::fromRecord($batch->fresh());
+            return Batch::fromRecord($batch->refresh());
         }
 
         if ($response->successful()) {
             $batch->update(['status' => BatchStatus::Canceling]);
 
-            return Batch::fromRecord($batch->fresh());
+            return Batch::fromRecord($batch->refresh());
         }
 
         Log::channel('llm')->error('Failed to cancel batch on Anthropic', [

@@ -35,8 +35,8 @@ use Illuminate\Support\Carbon;
  * @property ?Carbon $last_polled_at
  * @property int $poll_attempts
  * @property ?string $results_url
- * @property ?Carbon $created_at
- * @property ?Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class BatchRecord extends Model
 {

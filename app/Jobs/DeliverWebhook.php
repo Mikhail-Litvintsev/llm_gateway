@@ -56,7 +56,7 @@ final class DeliverWebhook implements ShouldQueue
         }
 
         $details = $requests->findDetails($this->requestId, true);
-        if (! $details->exists()) {
+        if ($details->request === null) {
             return;
         }
 
