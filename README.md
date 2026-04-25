@@ -42,21 +42,14 @@ Synchronous request flow:
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as Client
-    participant N as Nginx
-    participant P as PHP-FPM (www)
-    participant R as Redis
-    participant D as MySQL
-    participant A as Anthropic
-
-    C->>N: POST /v1/messages (Bearer gw_live_*)
-    N->>P: route
-    P->>R: auth + rate-limit snapshot
-    P->>D: client lookup + request log (open tx)
-    P->>A: POST /v1/messages
-    A-->>P: 200 + body + usage headers
-    P->>D: commit usage / billing
-    P-->>C: Anthropic body + X-Gateway-* headers
+    Client->>Nginx: POST /v1/messages (Bearer gw_live_*)
+    Nginx->>PhpFpm: route to www pool
+    PhpFpm->>Redis: auth + rate-limit snapshot
+    PhpFpm->>MySQL: client lookup + request log (open tx)
+    PhpFpm->>Anthropic: POST /v1/messages
+    Anthropic-->>PhpFpm: 200 + body + usage headers
+    PhpFpm->>MySQL: commit usage / billing
+    PhpFpm-->>Client: Anthropic body + X-Gateway-* headers
 ```
 
 Async webhook flow:
@@ -64,27 +57,19 @@ Async webhook flow:
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as Client
-    participant G as Gateway
-    participant D as MySQL
-    participant Q as Redis Queue
-    participant W as Queue Worker
-    participant A as Anthropic
-    participant WH as Client Webhook
+    Client->>Gateway: POST /v1/messages/async
+    Gateway->>MySQL: INSERT requests + async_pending
+    Gateway->>Queue: dispatch ProcessAsyncMessage
+    Gateway-->>Client: 202 Accepted (request_id)
 
-    C->>G: POST /v1/messages/async
-    G->>D: INSERT requests + async_pending
-    G->>Q: dispatch ProcessAsyncMessage
-    G-->>C: 202 Accepted (request_id)
-
-    W->>Q: pick job
-    W->>A: POST /v1/messages
-    A-->>W: response
-    W->>D: persist raw + usage
-    W->>Q: dispatch DeliverWebhook
-    W->>WH: POST (HMAC-signed)
-    WH-->>W: 2xx
-    W->>D: mark delivered
+    Worker->>Queue: pick job
+    Worker->>Anthropic: POST /v1/messages
+    Anthropic-->>Worker: response
+    Worker->>MySQL: persist raw + usage
+    Worker->>Queue: dispatch DeliverWebhook
+    Worker->>ClientWebhook: POST (HMAC-signed)
+    ClientWebhook-->>Worker: 2xx
+    Worker->>MySQL: mark delivered
 ```
 
 ## Endpoints
