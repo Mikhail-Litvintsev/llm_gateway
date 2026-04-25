@@ -214,6 +214,7 @@ return [
         'scheduler_batch_size' => max(1, (int) env('WEBHOOK_SCHEDULER_BATCH_SIZE', 500)),
         'timestamp_max_age_seconds' => max(1, (int) env('WEBHOOK_TIMESTAMP_MAX_AGE_SECONDS', 300)),
         'signing_algorithm' => 'sha256',
+        'permanent_fail_statuses' => [400, 401, 403, 404, 410, 413, 422],
     ],
 
     'async' => [

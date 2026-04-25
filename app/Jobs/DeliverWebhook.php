@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Components\Delivery\Webhook\DTO\SignedRequest;
 use App\Components\Delivery\Webhook\DTO\WebhookEnvelope;
+use App\Components\Delivery\Webhook\Enums\WebhookDeliveryOutcome;
 use App\Components\Delivery\Webhook\Enums\WebhookEvent;
 use App\Components\Delivery\Webhook\Webhook;
 use App\Components\Logging\Enums\RequestStatus;
@@ -67,18 +68,25 @@ final class DeliverWebhook implements ShouldQueue
         $envelope = $this->buildEnvelope($details, $client);
         $signed = $webhook->buildSignedRequest($client, $envelope);
 
-        $success = $this->attemptDelivery($signed, $pendingRow->callback_url);
+        $outcome = $this->attemptDelivery($signed, $pendingRow->callback_url);
         $newAttempts = $pendingRow->callback_attempts + 1;
         $maxAttempts = $this->resolveMaxAttempts($client);
 
-        match (true) {
-            $success => $pending->markDelivered($this->requestId, $newAttempts),
-            $newAttempts >= $maxAttempts => $this->markExhausted($client, $newAttempts, $requests, $pending),
-            default => $pending->scheduleRetry(
-                $this->requestId,
+        match ($outcome) {
+            WebhookDeliveryOutcome::Success => $pending->markDelivered($this->requestId, $newAttempts),
+            WebhookDeliveryOutcome::PermanentFail => $this->markExhaustedPermanentFail(
+                $client,
                 $newAttempts,
-                now()->addSeconds($this->computeBackoffDelaySeconds($newAttempts)),
+                $requests,
+                $pending,
             ),
+            WebhookDeliveryOutcome::TransientFail => $newAttempts >= $maxAttempts
+                ? $this->markExhausted($client, $newAttempts, $requests, $pending)
+                : $pending->scheduleRetry(
+                    $this->requestId,
+                    $newAttempts,
+                    now()->addSeconds($this->computeBackoffDelaySeconds($newAttempts)),
+                ),
         };
     }
 
@@ -104,15 +112,23 @@ final class DeliverWebhook implements ShouldQueue
         $newAttempts = $pendingRow->callback_attempts + 1;
         $maxAttempts = $this->resolveMaxAttempts($client);
 
-        $this->logFailureRecovery($exception, $newAttempts, $maxAttempts);
-
         if ($newAttempts >= $maxAttempts) {
             $pending->markExhausted($this->requestId, $newAttempts);
             $requests->setStatus($this->requestId, RequestStatus::FailedCallbackDelivery->value);
 
+            Log::channel('llm')->error('Webhook delivery exhausted', [
+                'request_id' => $this->requestId,
+                'client_id' => $client?->id,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'attempts' => $newAttempts,
+                'reason' => 'transient_fail',
+            ]);
+
             return;
         }
 
+        $this->logFailureRecovery($exception, $newAttempts, $maxAttempts);
         $pending->scheduleRetry(
             $this->requestId,
             $newAttempts,
@@ -120,7 +136,7 @@ final class DeliverWebhook implements ShouldQueue
         );
     }
 
-    private function attemptDelivery(SignedRequest $signed, string $callbackUrl): bool
+    private function attemptDelivery(SignedRequest $signed, string $callbackUrl): WebhookDeliveryOutcome
     {
         try {
             $response = Http::withHeaders($signed->headers)
@@ -129,10 +145,24 @@ final class DeliverWebhook implements ShouldQueue
                 ->connectTimeout((int) config('llm.webhook.connect_timeout_seconds', 5))
                 ->post($callbackUrl);
 
-            return $response->successful();
+            if ($response->successful()) {
+                return WebhookDeliveryOutcome::Success;
+            }
+
+            return $this->isPermanentFailStatus($response->status())
+                ? WebhookDeliveryOutcome::PermanentFail
+                : WebhookDeliveryOutcome::TransientFail;
         } catch (ConnectionException|RequestException) {
-            return false;
+            return WebhookDeliveryOutcome::TransientFail;
         }
+    }
+
+    private function isPermanentFailStatus(int $status): bool
+    {
+        /** @var int[] $statuses */
+        $statuses = (array) config('llm.webhook.permanent_fail_statuses', [400, 401, 403, 404, 410, 413, 422]);
+
+        return in_array($status, $statuses, true);
     }
 
     private function markExhausted(
@@ -148,6 +178,24 @@ final class DeliverWebhook implements ShouldQueue
             'request_id' => $this->requestId,
             'client_id' => $client->id,
             'attempts' => $newAttempts,
+            'reason' => 'transient_fail',
+        ]);
+    }
+
+    private function markExhaustedPermanentFail(
+        Client $client,
+        int $newAttempts,
+        RequestRepository $requests,
+        AsyncPendingRepository $pending,
+    ): void {
+        $pending->markExhausted($this->requestId, $newAttempts);
+        $requests->setStatus($this->requestId, RequestStatus::FailedCallbackDelivery->value);
+
+        Log::channel('llm')->error('Webhook delivery exhausted', [
+            'request_id' => $this->requestId,
+            'client_id' => $client->id,
+            'attempts' => $newAttempts,
+            'reason' => 'permanent_fail',
         ]);
     }
 

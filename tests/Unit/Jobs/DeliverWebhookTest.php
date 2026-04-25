@@ -12,12 +12,20 @@ use App\Models\Client;
 use App\Repositories\AsyncPendingRepository;
 use App\Repositories\RequestRepository;
 use Carbon\Carbon;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response as ClientResponse;
+use Illuminate\Log\Logger as IlluminateLogger;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger as MonologLogger;
+use Monolog\LogRecord;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\TestCase;
@@ -251,6 +259,172 @@ final class DeliverWebhookTest extends TestCase
         $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * @return array<string, array{int, 'success'|'permanent_fail'|'transient_fail'}>
+     */
+    public static function statusClassificationProvider(): array
+    {
+        return [
+            '200 → success' => [200, 'success'],
+            '201 → success' => [201, 'success'],
+            '204 → success' => [204, 'success'],
+            '400 → permanent_fail' => [400, 'permanent_fail'],
+            '401 → permanent_fail' => [401, 'permanent_fail'],
+            '403 → permanent_fail' => [403, 'permanent_fail'],
+            '404 → permanent_fail' => [404, 'permanent_fail'],
+            '410 → permanent_fail' => [410, 'permanent_fail'],
+            '413 → permanent_fail' => [413, 'permanent_fail'],
+            '422 → permanent_fail' => [422, 'permanent_fail'],
+            '408 → transient_fail' => [408, 'transient_fail'],
+            '425 → transient_fail' => [425, 'transient_fail'],
+            '429 → transient_fail' => [429, 'transient_fail'],
+            '500 → transient_fail' => [500, 'transient_fail'],
+            '502 → transient_fail' => [502, 'transient_fail'],
+            '503 → transient_fail' => [503, 'transient_fail'],
+            '599 → transient_fail' => [599, 'transient_fail'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('statusClassificationProvider')]
+    public function attempt_delivery_classifies_status_correctly(int $status, string $expectedOutcome): void
+    {
+        Http::fake([
+            $this->callbackUrl => Http::response('body', $status),
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
+
+        match ($expectedOutcome) {
+            'success' => $this->assertSame('delivered', $row->status, "status=$status expected delivered"),
+            'permanent_fail' => $this->assertSame('exhausted', $row->status, "status=$status expected exhausted at attempt 1"),
+            'transient_fail' => $this->assertSame('processing', $row->status, "status=$status expected processing with scheduleRetry"),
+            default => throw new RuntimeException("unexpected outcome `$expectedOutcome`"),
+        };
+
+        if ($expectedOutcome === 'permanent_fail') {
+            $this->assertSame(1, (int) $row->callback_attempts);
+            $this->assertNull($row->next_attempt_at);
+
+            $requestStatus = DB::table('requests')->where('request_id', $this->requestId)->value('status');
+            $this->assertSame(RequestStatus::FailedCallbackDelivery->value, $requestStatus);
+        }
+    }
+
+    #[Test]
+    public function permanent_fail_short_circuits_even_near_max_attempts(): void
+    {
+        DB::table('async_pending')
+            ->where('request_id', $this->requestId)
+            ->update(['callback_attempts' => 9, 'status' => 'processing']);
+
+        Http::fake([
+            $this->callbackUrl => Http::response('bad payload', 400),
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
+        $this->assertSame('exhausted', $row->status);
+        $this->assertSame(10, (int) $row->callback_attempts);
+        $this->assertNull($row->next_attempt_at);
+
+        $requestStatus = DB::table('requests')->where('request_id', $this->requestId)->value('status');
+        $this->assertSame(RequestStatus::FailedCallbackDelivery->value, $requestStatus);
+    }
+
+    #[Test]
+    public function request_exception_is_treated_as_transient_fail(): void
+    {
+        Http::fake([
+            $this->callbackUrl => function (): void {
+                throw new RequestException(
+                    new ClientResponse(new Psr7Response(500, [], 'boom')),
+                );
+            },
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $row = DB::table('async_pending')->where('request_id', $this->requestId)->first();
+        $this->assertSame('processing', $row->status);
+        $this->assertSame(1, (int) $row->callback_attempts);
+    }
+
+    #[Test]
+    public function permanent_fail_logs_reason_permanent_fail(): void
+    {
+        $records = $this->captureLlmLogs();
+
+        Http::fake([
+            $this->callbackUrl => Http::response('bad', 400),
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $exhausted = array_values(array_filter(
+            $records(),
+            fn (array $r): bool => $r['message'] === 'Webhook delivery exhausted',
+        ));
+        $this->assertCount(1, $exhausted, 'expected exactly one exhausted log entry');
+        $this->assertSame('permanent_fail', $exhausted[0]['context']['reason'] ?? null);
+        $this->assertSame(1, $exhausted[0]['context']['attempts'] ?? null);
+    }
+
+    #[Test]
+    public function transient_fail_at_max_attempts_logs_reason_transient_fail(): void
+    {
+        DB::table('async_pending')
+            ->where('request_id', $this->requestId)
+            ->update(['callback_attempts' => 9, 'status' => 'processing']);
+
+        $records = $this->captureLlmLogs();
+
+        Http::fake([
+            $this->callbackUrl => Http::response('boom', 500),
+        ]);
+
+        $job = new DeliverWebhook($this->requestId);
+        $job->handle(app(Webhook::class), app(RequestRepository::class), app(AsyncPendingRepository::class));
+
+        $exhausted = array_values(array_filter(
+            $records(),
+            fn (array $r): bool => $r['message'] === 'Webhook delivery exhausted',
+        ));
+        $this->assertCount(1, $exhausted);
+        $this->assertSame('transient_fail', $exhausted[0]['context']['reason'] ?? null);
+    }
+
+    /**
+     * @return callable(): list<array{message: string, context: array<string, mixed>}>
+     */
+    private function captureLlmLogs(): callable
+    {
+        $handler = new TestHandler;
+
+        $manager = app('log');
+        $manager->extend('llm_test_capture', fn () => new IlluminateLogger(
+            new MonologLogger('llm', [$handler]),
+            app('events'),
+        ));
+        config()->set('logging.channels.llm', ['driver' => 'llm_test_capture']);
+        $manager->forgetChannel('llm');
+
+        return static fn (): array => array_map(
+            static fn (LogRecord $r): array => [
+                'message' => $r->message,
+                'context' => $r->context,
+            ],
+            $handler->getRecords(),
+        );
     }
 
     private function seedClient(): Client
